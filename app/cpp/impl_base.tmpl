@@ -1,0 +1,26 @@
+// auto generated, do not modify
+
+#pragma once
+
+{% block include %}
+#include <bit>
+#include <cstdint>
+#include <cstring>
+#include <limits>
+#include <stdexcept>
+
+{% for include in includes | sort | unique %}
+#include "{{ include }}"
+{% endfor %}
+{% endblock %}
+
+{% if schema.package != None %}
+namespace {{ schema.package | join('::') }} {
+{% endif %}
+
+{% block impl %}
+{% endblock %}
+
+{% if schema.package != None %}
+} // namespace {{ schema.package | join('::') }}
+{% endif %}

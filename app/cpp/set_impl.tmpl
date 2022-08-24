@@ -1,0 +1,18 @@
+{% extends 'impl_base.tmpl' %}
+
+{% set className = set.name | class %}
+
+{% block impl %}
+/// Set @c {{ set.name }}
+{% if set.description != None %}
+/// {{ set.description }}
+{% endif %}
+enum class {{ className }} : {{ set.encodingType.name | cpp }} {
+{% for choice in set.choices %}
+    {% if choice.description != None %}
+    /// {{ choice.description }}
+    {% endif %}
+    {{ choice.name }} = (1 << {{ choice.value }}){% if loop.nextitem is defined %},{% endif +%}
+{% endfor %}
+};
+{% endblock %}

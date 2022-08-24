@@ -1,0 +1,174 @@
+{% macro generate(className, field) %}
+{% set type = field.type %}
+{% if type | isType %}
+{{ generateType(className, field) -}}
+{% elif type | isComposite %}
+{{ generateComposite(className, field) -}}
+{% elif type | isEnum %}
+{{ generateEnum(className, field) -}}
+{% elif type | isSet %}
+{{ generateSet(className, field) -}}
+{% endif %}
+{% endmacro %}
+
+{% macro generateType(className, field) %}
+{% set type = field.type %}
+{% set rawType = type.primitiveType.name | cpp %}
+{% set method0 = field.name | method0 %}
+{% set method1 = field.name | method1 %}
+
+{%- if type.length > 1 %}
+    {% if type.primitiveType.name == 'char' %}
+        {% set nativeTypeName = 'std::string_view' %}
+    {% else %}
+        {% set nativeTypeName = 'std::span<{{ rawType }}>' %}
+    {% endif %}
+{% else %}
+    {% set nativeTypeName = type.primitiveType.name | cpp %}
+{% endif -%}
+
+{% if field | isConstant %}
+/// Return value for field @c {{ field.name }}
+[[nodiscard]] static constexpr {{ nativeTypeName }} {{ method0 }}() noexcept {
+    {% if field.valueRef != None %}
+        {% set value = field.valueRef %}
+    {% else %}
+        {% set value = type.constValue %}
+    {% endif -%}
+
+    {% if type.primitiveType.name == 'char' %}
+        {% if type.length == 1 %}
+    return '{{ value }}';
+        {% else %}
+    return "{{ value }}";
+        {% endif %}
+    {% else %}
+    return {{ value }};
+    {% endif %}
+}
+{% else %}
+/// Return value for field @c {{ field.name }}
+[[nodiscard]] {{ nativeTypeName }} {{ method0 }}() const noexcept {
+    {% if type.length > 1 %}
+    return {{ nativeTypeName }}(std::bit_cast<{{ rawType }} const*>(buffer_ + offset_ + {{ field.offset }}), {{ type.length }});
+    {% else %}
+    return *std::bit_cast<{{ nativeTypeName }} const*>(buffer_ + offset_ + {{ field.offset }});
+    {% endif %}
+}
+
+/// Set value for field @c {{ field.name }}
+{{className}}& {{ method0 }}({{ nativeTypeName }} value) noexcept {
+    {% if type.length > 1 %}
+    // trim size in case of greater type length
+    std::size_t const size = value.size() > {{ type.length }} ? {{ type.length }} : value.size();
+    std::memcpy(buffer_ + offset_ + {{ field.offset }}, value.begin(), size * sizeof({{ rawType }}));
+    // TODO: last symbol '\0'
+    {% else %}
+    std::memcpy(buffer_ + offset_ + {{ field.offset }}, &value, sizeof({{ rawType }}));
+    {% endif %}
+    return *this;
+}
+{% endif %}
+
+{% if field | isOptional %}
+/// Return true on field @c {{ field.name }} is present
+[[nodiscard]] bool is{{ method1 }}Present() const noexcept {
+    auto const value = this->{{ method0 }}(){% if type.length > 1%}[0]{% endif -%};
+    auto const null = {{ rawType }}({{ type.nullValue | cpp }});
+    {% if type | isFloatingPoint %}
+    return (null != null && value != value) || (value == null);
+    {% else %}
+    return value != null;
+    {% endif  %}
+}
+{% else %}
+/// Return true on field @c {{ field.name }} is present
+[[nodiscard]] static constexpr bool is{{ method1 }}Present() noexcept {
+    return true;
+}
+{% endif -%}
+
+{% endmacro -%}
+
+{% macro generateComposite(className, field) %}
+{% set type = field.type %}
+{% set compositeClassName = type.name | class %}
+{% set method0 = field.name | method0 %}
+{% set method1 = field.name | method1 %}
+/// Return flyweight object for composite type @c {{ field.name }}
+[[nodiscard]] {{ compositeClassName }} {{ method0 }}() noexcept {
+    return {{compositeClassName}}(buffer_, bufferSize_, offset_ + {{ field.offset }}, actingVersion_);
+}
+{% endmacro -%}
+
+{% macro generateEnum(className, field) %}
+{% set type = field.type %}
+{% set enumClassName = type.name | class %}
+{% set rawType = type.encodingType.name | cpp %}
+{% set method0 = field.name | method0 %}
+{% set method1 = field.name | method1 %}
+
+{%- if field | isConstant %}
+/// Return value for field  @c {{ field.name }}
+[[nodiscard]] static constexpr {{ enumClassName }} {{ method0 }}() noexcept {
+    {% if field.valueRef != None %}
+    return {{ enumClassName }}::{{ field.valueRef.split('.')[1] }};
+    {% else %}
+    return {{ enumClassName }}::{{ field.constValue.split('.')[1] }};
+    {% endif %}
+}
+{% else %}
+/// Return value for field  @c {{ field.name }}
+[[nodiscard]] {{ enumClassName }} {{ method0 }}() const noexcept {
+    return {{ enumClassName }}(*std::bit_cast<{{ rawType }} const*>(buffer_ + offset_ + {{ field.offset }}));
+}
+
+/// Set value for field  @c {{ field.name }}
+{{ className }}& {{ method0 }}({{ enumClassName }} value) noexcept {
+    *std::bit_cast<{{ rawType }} *>(buffer_ + offset_ + {{ field.offset }}) = static_cast<{{ rawType }}>(value);
+    return *this;
+}
+{% endif %}
+
+{% if field | isOptional %}
+/// Return true on field @c {{ field.name }} is present
+[[nodiscard]] bool is{{ method1 }}Present() const noexcept {
+    return {{ enumClassName }}::NULL_VALUE != this->{{ method0 }}();
+}
+{% else %}
+/// Return true on field @c {{ field.name }} is present
+[[nodiscard]] static constexpr bool is{{ method1 }}Present() noexcept {
+    return true;
+}
+{% endif -%}
+
+{% endmacro -%}
+
+{% macro generateSet(className, field) %}
+{% set type = field.type %}
+{% set setClassName = type.name | class %}
+{% set rawType = type.encodingType.name | cpp %}
+{% set method0 = field.name | method0 %}
+{% set method1 = field.name | method1 %}
+
+/// Return raw value for field @c {{ field.name }}
+[[nodiscard]] {{ rawType }} {{ method0 }}Raw() const noexcept {
+    return *std::bit_cast<{{ rawType }} const*>(buffer_ + offset_ + {{ field.offset }});
+}
+
+/// Return true on bit set in field @c {{ field.name }}
+[[nodiscard]] bool is{{ method1 }}BitSet({{ setClassName }} value) const noexcept {
+    return static_cast<{{ rawType }}>(value) == (this->{{ method0 }}Raw() & static_cast<{{ rawType }}>(value));
+}
+
+/// Set raw value for field @c {{ field.name }}
+{{className}}& set{{ method1 }}Raw({{ rawType }} value) noexcept {
+    *std::bit_cast<{{ rawType }}*>(buffer_ + offset_ + {{ field.offset }}) = value;
+    return *this;
+}
+
+/// Reset all bits for field @c {{ field.name }}
+{{ className }}& {{ method0 }}Clear() noexcept {
+    return this->set{{ method1 }}Raw(0);
+}
+{% endmacro -%}

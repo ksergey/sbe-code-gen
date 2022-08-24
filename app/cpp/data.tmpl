@@ -1,0 +1,24 @@
+{% macro generate(className, data) %}
+{% set dataName = data.name | class %}
+{% set method0 = data.name | method0 %}
+{% set method1 = data.name | method1 %}
+
+{% set contentType = data.type.getType('varData') %}
+{% set rawType = contentType.primitiveType.name | cpp %}
+{% if contentType.primitiveType.name == 'char' %}
+    {% set nativeTypeName = 'std::string_view' %}
+{% else %}
+    {% set nativeTypeName = 'std::span<{{ rawType }}>' %}
+{% endif %}
+
+{% set lengthType = data.type.getType('length') %}
+
+// [[nodiscard]] {{ nativeTypeName }} {{ method0 }}() const {
+//     not implemented
+// }
+//
+// {{ className }}& {{ method0 }}({{ nativeTypeName }} value) {
+//     not implemented
+//     return *this;
+// }
+{% endmacro %}

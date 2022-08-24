@@ -1,0 +1,75 @@
+{% extends 'impl_base.tmpl' %}
+
+{% import 'field.tmpl' as fieldTmpl %}
+
+{% set className = composite.name | class %}
+
+{% block impl %}
+/// Encoder/decoder for composite type @c {{ composite.name }}
+/// {{ composite.description }}
+class {{ className }} final {
+private:
+    char* buffer_ = nullptr;
+    std::size_t bufferSize_ = 0;
+    std::size_t offset_ = 0;
+    std::uint16_t actingVersion_ = 0;
+
+public:
+    {{ className }}() = default;
+
+    {{ className }}(char *buffer, std::size_t bufferSize, std::size_t offset, std::uint16_t actingVersion)
+        : buffer_(buffer)
+        , bufferSize_(bufferSize)
+        , offset_(offset)
+        , actingVersion_(actingVersion)
+    {
+        if ((offset_ + sbeEncodedLength()) > bufferSize_) [[unlikely]] {
+            throw std::runtime_error("buffer too short for flyweight [E107]");
+        }
+    }
+
+    {{ className }}(char *buffer, std::size_t bufferSize, std::uint16_t actingVersion)
+        : {{ className }}(buffer, bufferSize, 0, actingVersion)
+    {}
+
+    {{ className }}(char *buffer, std::size_t bufferSize)
+        : {{ className }}(buffer, bufferSize, 0, sbeSchemaVersion())
+    {}
+
+    [[nodiscard]] static constexpr std::size_t sbeEncodedLength() noexcept {
+        return {{ composite.encodedLength() }};
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
+        return static_cast<std::uint16_t>({{ schema.id }});
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
+        return static_cast<std::uint16_t>({{ schema.version }});
+    }
+
+    [[nodiscard]] std::size_t offset() const noexcept {
+        return offset_;
+    }
+
+    [[nodiscard]] char const* buffer() const noexcept {
+        return buffer_;
+    }
+
+    [[nodiscard]] char* buffer() noexcept {
+        return buffer_;
+    }
+
+    [[nodiscard]] std::size_t bufferSize() const noexcept {
+        return bufferSize_;
+    }
+
+    [[nodiscard]] std::uint16_t actingVersion() const noexcept {
+        return actingVersion_;
+    }
+
+{% for type in composite.containedTypes.values() %}
+    {{ fieldTmpl.generate(className, type | asField) | indent }}
+{% endfor %}
+};
+{% endblock %}

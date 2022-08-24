@@ -1,0 +1,125 @@
+{% import 'field.tmpl' as fieldTmpl %}
+{% import 'data.tmpl' as dataTmpl %}
+
+{% macro generate(className, group) %}
+{% set groupName = group.name | class %}
+{% set method0 = group.name | method0 %}
+{% set method1 = group.name | method1 %}
+{% set dimensionClassName = group.dimensionType.name | class -%}
+
+/// encoder/decoder for group @c {{ group.name }}
+/// {{ group.description }}
+class {{ groupName }} final {
+private:
+    char* buffer_ = nullptr;
+    std::size_t bufferSize_ = 0;
+    std::size_t initialPosition_ = 0;
+    std::size_t* positionPtr_ = nullptr;
+    std::size_t blockLength_ = 0;
+    std::size_t count_ = 0;
+    std::size_t index_ = 0;
+    std::size_t offset_ = 0;
+    std::uint16_t actingVersion_ = 0;
+
+public:
+    {{ groupName }}() = default;
+
+    {{ groupName }}(char* buffer, std::size_t bufferSize, std::size_t* pos, std::uint16_t actingVersion)
+        : buffer_(buffer)
+        , bufferSize_(bufferSize)
+        , initialPosition_(*pos)
+        , positionPtr_(pos)
+        , index_(0)
+        , offset_(0)
+        , actingVersion_(actingVersion)
+    {
+        {{ dimensionClassName }} dimensions(buffer_, bufferSize_, *pos, actingVersion);
+        blockLength_ = dimensions.blockLength();
+        count_ = dimensions.numInGroup();
+        *positionPtr_ = *positionPtr_ + dimensions.sbeEncodedLength();
+    }
+
+    {{ groupName }}(std::size_t count, char* buffer, std::size_t bufferSize, std::size_t* pos, std::uint16_t actingVersion)
+        : buffer_(buffer)
+        , bufferSize_(bufferSize)
+        , initialPosition_(*pos)
+        , positionPtr_(pos)
+        , blockLength_({{ group.blockLength }})
+        , count_(count)
+        , index_(0)
+        , offset_(0)
+        , actingVersion_(actingVersion)
+    {
+        {{ dimensionClassName }} dimensions(buffer_, bufferSize_, *pos, actingVersion);
+        dimensions.blockLength({{ group.blockLength }});
+        dimensions.numInGroup(count);
+        *positionPtr_ = *positionPtr_ + dimensions.sbeEncodedLength();
+    }
+
+    [[nodiscard]] std::size_t sbePosition() const noexcept {
+        return *positionPtr_;
+    }
+
+    std::size_t sbeCheckPosition(std::size_t position) const {
+        if (position > bufferSize_) [[unlikely]] {
+            throw std::runtime_error("buffer too short [E100]");
+        }
+        return position;
+    }
+
+    void sbePosition(std::size_t position) {
+        *positionPtr_ = sbeCheckPosition(position);
+    }
+
+    [[nodiscard]] std::size_t encodedLength() const noexcept {
+        return sbePosition() - offset_;
+    }
+
+    [[nodiscard]] std::size_t count() const noexcept {
+        return count_;
+    }
+
+    [[nodiscard]] bool hasNext() const noexcept {
+        return index_ < count_;
+    }
+
+    {{ groupName }}& next() {
+        if (index_ >= count_) [[unlikely]] {
+            throw std::runtime_error("index >= count [E108]");
+        }
+        offset_ = *positionPtr_;
+        if ((offset_ + blockLength_) > bufferSize_) [[unlikely]] {
+            throw std::runtime_error("buffer too short for next group index [E108]");
+        }
+        *positionPtr_ = offset_ + blockLength_;
+        index_++;
+
+        return *this;
+    }
+
+{% for field in group.fields %}
+    {% if field | isField %}
+    {{ fieldTmpl.generate(groupName, field) | indent }}
+    {% elif field | isGroup %}
+    {{ generate(groupName, field) | indent }}
+    {% elif field | isData %}
+    {{ dataTmpl.generate(groupName, field,) | indent }}
+    {% endif %}
+{% endfor %}
+private:
+    [[nodiscard]] std::size_t* sbePositionPtr() noexcept {
+        return positionPtr_;
+    }
+};
+
+/// Return flyweight object for group @c {{ group.name }}
+[[nodiscard]] {{ groupName }} {{ method0 }}() noexcept {
+    return {{ groupName }}(buffer_, bufferSize_, sbePositionPtr(), actingVersion_);
+}
+
+/// Return flyweight object for group @c {{ group.name }}
+/// @param[in] set number of elements in group
+[[nodiscard]] {{ groupName }} {{ method0 }}(std::size_t count) noexcept {
+    return {{ groupName }}(count, buffer_, bufferSize_, sbePositionPtr(), actingVersion_);
+}
+{% endmacro %}

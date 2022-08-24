@@ -1,0 +1,108 @@
+{% extends 'impl_base.tmpl' %}
+
+{% import 'field.tmpl' as fieldTmpl %}
+{% import 'group.tmpl' as groupTmpl %}
+{% import 'data.tmpl' as dataTmpl %}
+
+{% set className = message.name | class %}
+
+{% block impl -%}
+/// Encoder/decoder for message @c {{ message.name }}
+{% if message.description != None %}
+/// {{ message.description }}
+{% endif %}
+class {{ className }} final {
+private:
+    char* buffer_ = nullptr;
+    std::size_t bufferSize_ = 0;
+    std::size_t offset_ = 0;
+    std::size_t position_ = 0;
+    std::size_t actingBlockLength_ = 0;
+    std::uint16_t actingVersion_ = 0;
+
+public:
+    {{ className }}() = default;
+
+    {{ className }}(char* buffer, std::size_t bufferSize, std::size_t offset, std::size_t actingBlockLength,
+        std::uint16_t actingVersion)
+        : buffer_(buffer)
+        , bufferSize_(bufferSize)
+        , offset_(offset)
+        , position_(sbeCheckPosition(offset + actingBlockLength))
+        , actingVersion_(actingVersion)
+    {}
+
+    {{ className }}(char* buffer, std::size_t bufferSize)
+        : {{ className }}(buffer, bufferSize, 0, sbeBlockLength(), sbeSchemaVersion())
+    {}
+
+    [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
+        return static_cast<std::size_t>({{ message.blockLength }});
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
+        return static_cast<std::uint16_t>({{ schema.id }});
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
+        return static_cast<std::uint16_t>({{ schema.version }});
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeTemplateId() noexcept {
+        return static_cast<std::uint16_t>({{ message.id }});
+    }
+
+    [[nodiscard]] std::size_t offset() const noexcept {
+        return offset_;
+    }
+
+    [[nodiscard]] std::size_t sbePosition() const noexcept {
+        return position_;
+    }
+
+    std::size_t sbeCheckPosition(std::size_t position) const {
+        if (position > bufferSize_) [[unlikely]] {
+            throw std::runtime_error("buffer too short [E100]");
+        }
+        return position;
+    }
+
+    void sbePosition(std::size_t position) {
+        position_ = sbeCheckPosition(position);
+    }
+
+    [[nodiscard]] std::size_t encodedLength() const noexcept {
+        return position_  - offset_;
+    }
+
+    [[nodiscard]] char const* buffer() const noexcept {
+        return buffer_;
+    }
+
+    [[nodiscard]] char* buffer() noexcept {
+        return buffer_;
+    }
+
+    [[nodiscard]] std::size_t bufferSize() const noexcept {
+        return bufferSize_;
+    }
+
+    [[nodiscard]] std::uint16_t actingVersion() const noexcept {
+        return actingVersion_;
+    }
+
+{% for field in message.fields %}
+    {% if field | isField %}
+    {{ fieldTmpl.generate(className, field) | indent }}
+    {% elif field | isGroup %}
+    {{ groupTmpl.generate(className, field) | indent }}
+    {% elif field | isData %}
+    {{ dataTmpl.generate(className, field,) | indent }}
+    {% endif %}
+{% endfor %}
+private:
+    [[nodiscard]] std::size_t* sbePositionPtr() noexcept {
+        return &position_;
+    }
+};
+{% endblock %}
