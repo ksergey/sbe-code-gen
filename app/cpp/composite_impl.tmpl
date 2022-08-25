@@ -72,4 +72,29 @@ public:
     {{ fieldTmpl.generate(className, type | asField) | indent }}
 {% endfor %}
 };
+
+{% if composite.isMessageHeader() %}
+// TODO: concept Message
+
+template<class T>
+inline T sbeCast({{ className }} header) {
+    if (header.templateId() != T::sbeTemplateId()) [[unlikely]] {
+        throw std::runtime_error("can't cast message header to type T");
+    }
+    return T(header.buffer(), header.bufferSize(), header.offset() + header.sbeEncodedLength(),
+        header.blockLength(), header.version());
+}
+
+template<class T>
+inline T wrapAndApplyHeader(char* buffer, std::size_t bufferSize) {
+    {{ className }} messageHeader(buffer, bufferSize);
+    messageHeader
+        .blockLength(T::sbeBlockLength())
+        .templateId(T::sbeTemplateId())
+        .schemaId(T::sbeSchemaId())
+        .version(T::sbeSchemaVersion())
+    ;
+    return sbeCast<T>(messageHeader);
+}
+{% endif %}
 {% endblock %}
