@@ -99,6 +99,18 @@
 [[nodiscard]] {{ compositeClassName }} {{ method0 }}() noexcept {
     return {{compositeClassName}}(buffer_, bufferSize_, offset_ + {{ field.offset }}, actingVersion_);
 }
+
+{% if field | isOptional %}
+/// Return true on field @c {{ field.name }} is present
+[[nodiscard]] bool is{{ method1 }}Present() const noexcept {
+    return {{ method0 }}().is{{ type.getFirstType().name | method1 }}Present();
+}
+{% else %}
+/// Return true on field @c {{ field.name }} is present
+[[nodiscard]] static constexpr bool is{{ method1 }}Present() noexcept {
+    return true;
+}
+{% endif -%}
 {% endmacro -%}
 
 {% macro generateEnum(className, field) %}
