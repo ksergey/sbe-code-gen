@@ -303,6 +303,9 @@ class Composite(Type):
             raise Exception(f'type "{name}" not found in composite "{self.name}"')
         return self.containedTypes[name]
 
+    def getFirstType(self) -> Any:
+        return list(self.containedTypes.values())[0]
+
     def checkForWellFormedVariableLengthDataEncoding(self) -> None:
         lengthType = self.getType('length')
         # TODO: check lengthType
