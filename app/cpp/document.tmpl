@@ -1,4 +1,4 @@
-// auto generated, do not modify
+// Auto-generated file
 
 #pragma once
 
@@ -7,20 +7,24 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <stdexcept>
+#include <string_view>
 
-{% for include in includes | sort | unique %}
+{% for include in includes | sort %}
 #include "{{ include }}"
 {% endfor %}
 {% endblock %}
 
 {% if schema.package != None %}
 namespace {{ schema.package | join('::') }} {
+{% else %}
+namespace sbe {
 {% endif %}
 
-{% block impl %}
+{% block content %}
 {% endblock %}
 
 {% if schema.package != None %}
 } // namespace {{ schema.package | join('::') }}
+{% else %}
+} // namespace sbe
 {% endif %}

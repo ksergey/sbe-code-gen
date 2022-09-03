@@ -1,0 +1,113 @@
+{% extends 'document.tmpl' %}
+
+{% import 'method.tmpl' as method %}
+
+{% block content %}
+/// @brief Message {{ message.name }}
+{% if message.description %}
+/// {{ message.description }}
+{% endif %}
+class {{ message.name | className }} final {
+private:
+    char* buffer_ = nullptr;
+    std::size_t bufferLength_ = 0;
+    std::size_t offset_ = 0;
+    std::size_t position_ = 0;
+    std::size_t actingBlockLength_ = 0;
+    std::uint16_t actingVersion_ = 0;
+
+public:
+    {{ message.name | className }}() = default;
+
+    {{ message.name | className }}(char* buffer, std::size_t offset, std::size_t bufferLength,
+            std::size_t actingBlockLength, std::uint16_t actingVersion)
+        : buffer_(buffer)
+        , bufferLength_(bufferLength)
+        , offset_(offset)
+        , position_(sbeCheckPosition(offset + actingBlockLength))
+        , actingBlockLength_(actingBlockLength)
+        , actingVersion_(actingVersion)
+    {}
+
+    {{ message.name | className }}(char* buffer, std::size_t bufferLength)
+        : {{ message.name | className }}(buffer, 0, bufferLength, sbeBlockLength(), sbeSchemaVersion())
+    {}
+
+    {{ message.name | className }}(char* buffer, std::size_t bufferLength, std::size_t actingBlockLength,
+            std::uint16_t actingVersion)
+        : {{ message.name | className }}(buffer, 0, bufferLength, actingBlockLength, actingVersion)
+    {}
+
+    [[nodiscard]] char const* buffer() const noexcept {
+        return buffer_;
+    }
+
+    [[nodiscard]] char* buffer() noexcept {
+        return buffer_;
+    }
+
+    [[nodiscard]] std::size_t bufferLength() const noexcept {
+        return bufferLength_;
+    }
+
+    [[nodiscard]] std::size_t offset() const noexcept {
+        return offset_;
+    }
+
+    [[nodiscard]] std::size_t position() const noexcept {
+        return position_;
+    }
+
+    void position(std::size_t value) {
+        position_ = sbeCheckPosition(value);
+    }
+
+    [[nodiscard]] std::size_t actingBlockLength() const noexcept {
+        return actingBlockLength_;
+    }
+
+    [[nodiscard]] std::uint16_t actingVersion() const noexcept {
+        return actingVersion_;
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
+        return {{ schema.id }};
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
+        return {{ schema.version }};
+    }
+
+    [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
+        return {{ message.blockLength }};
+    }
+
+    std::size_t sbeCheckPosition(std::size_t position) {
+        if (position > bufferLength_) [[unlikely]] {
+            throw std::runtime_error("buffer too short for message {{ message.name }} [E100]");
+        }
+        return position;
+    }
+
+    {{ message.name | className }}& wrapForEncode(char* buffer, std::size_t offset, std::size_t bufferLength) {
+        return *this = {{ message.name | className }}(buffer, offset, bufferLength, sbeBlockLength(), sbeSchemaVersion());
+    }
+
+    {{ message.name | className }}& wrapForDecode(char* buffer, std::size_t offset, std::size_t actingBlockLength,
+            std::uint16_t actingVersion, std::size_t bufferLength) {
+        return *this = {{ message.name | className }}(buffer, offset, bufferLength, actingBlockLength, actingVersion);
+    }
+
+    [[nodiscard]] std::size_t encodedLength() const noexcept {
+        return position() - offset_;
+    }
+
+{% for entry in message.fields %}
+    {{ method.generate(message.name | className, entry) | indent }}
+{% endfor -%}
+private:
+    std::size_t* positionPtr() noexcept {
+        return &position_;
+    }
+};
+{% endblock %}

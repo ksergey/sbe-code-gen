@@ -21,27 +21,17 @@ def loadXMLFromFile(path: str) -> ET.Element:
     for _, el in it:
         _, _, el.tag = el.tag.rpartition('}')
 
-    root = it.root
-
-    def inject(node: ET.Element, root: ET.Element):
-        for child in node:
-            child.attrib['__root__'] = root
-            inject(child, root)
-
-    inject(root, root)
-
-    return root
-
-
-def documentRoot(node: ET.Element) -> ET.Element:
-    return node.attrib.get('__root__')
+    return it.root
 
 def attr(node: ET.Element, name: str, default: Any = SENTINEL, cast = SENTINEL) -> Any:
     if name in node.attrib:
         if isinstance(cast, SentinelClass):
             return node.attrib[name]
         else:
-            return cast(node.attrib[name])
+            try:
+                return cast(node.attrib[name])
+            except (ValueError, TypeError):
+                raise Exception(f'can\'t cast "{node.attrib[name]}" to "{cast}"')
     else:
         if isinstance(default, SentinelClass):
             raise Exception(f'attribute "{name}" not found in xml-node ({node})')

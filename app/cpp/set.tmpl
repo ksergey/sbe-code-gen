@@ -1,0 +1,16 @@
+{% extends 'document.tmpl' %}
+
+{% block content %}
+/// @brief Set {{ type.name }}
+{% if type.description %}
+/// {{ type.description }}
+{% endif %}
+enum class {{ type.name | className }} : {{ type.encodingType | cpp }} {
+{% for entry in type.choices %}
+    {% if entry.description != None %}
+    /// {{ entry.description }}
+    {% endif %}
+    {{ entry.name }} = (1 << {{ entry.value }}){% if loop.nextitem is defined %},{% endif +%}
+{% endfor %}
+};
+{% endblock -%}
