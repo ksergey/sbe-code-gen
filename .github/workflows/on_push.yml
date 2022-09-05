@@ -1,6 +1,21 @@
-steps:
-- uses: actions/checkout@v3
-- uses: actions/setup-python@v4
-  with:
-    python-version: '3.10' 
-- run: python -m app --schema=resources/b3-market-data-messages-1.3.1.xml --destination=$PWD/schema
+name: check
+
+on: [push]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10' 
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    - name: Generate b3-market-data-messages-1.3.1.xml
+      run: python -m app --schema=resources/b3-market-data-messages-1.3.1.xml --destination=$PWD/b3-market-data-messages
+    - name: Generate FixBinary.xml
+      run: python -m app --schema=resources/FixBinary.xml --destination=$PWD/FixBinary
