@@ -111,6 +111,8 @@ class Parser:
     def getType(self, node: ET.Element, offset: Optional[int] = None) -> Type:
         nameStr = attr(node, 'name')
         presence = attr(node, 'presence', Presence.REQUIRED, cast=Presence)
+        length = attr(node, 'length', 1, cast=int)
+        primitiveType = Parser.getPrimitiveType(attr(node, 'primitiveType'))
         valueRef = attr(node, 'valueRef', None)
         constValue = None
 
@@ -124,7 +126,9 @@ class Parser:
             if valueRef == None:
                 constValue = node.text.strip()
                 if constValue == '':
-                    raise Exception('node text is empty and valueRef is not set for constant type "{nameStr}"')
+                    raise Exception(f'node text is empty and valueRef is not set for constant type "{nameStr}"')
+                if primitiveType.name == 'char' and len(constValue) != length:
+                    raise Exception(f'node text length is not equal to field length for constant type "{nameStr}"')
             else:
                 enumName, enumValueName = valueRef.split('.')
                 enumType = self.getEncodedTypeByName(enumName)
@@ -143,9 +147,9 @@ class Parser:
             nullValue = attr(node, 'nullValue', None),
             minValue = attr(node, 'minValue', None),
             maxValue = attr(node, 'maxValue', None),
-            length = attr(node, 'length', 1, cast=int),
+            length = length,
             offset = attr(node, 'offset', offset, cast=int),
-            primitiveType = Parser.getPrimitiveType(attr(node, 'primitiveType')),
+            primitiveType = primitiveType,
             semanticType = attr(node, 'semanticType', None),
             sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
             deprecated = attr(node, 'deprecated', None, cast=int),
