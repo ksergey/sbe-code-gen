@@ -304,16 +304,18 @@ private:
 {% macro generate_Data(className, entry) %}
 
 {%- set methodName = entry.name %}
-{%- set typeName = entry.varDataType.primitiveType | cpp %}
+{%- set lengthType = (entry.type.containedTypes | selectattr('name', 'equalto', 'length') | first) %}
+{%- set varDataType = (entry.type.containedTypes | selectattr('name', 'equalto', 'varData') | first) %}
+{%- set typeName = varDataType.primitiveType | cpp %}
 
-{%- if entry.varDataType.primitiveType == 'char' %}
+{%- if varDataType.primitiveType == 'char' %}
     {% set valueType = 'std::string_view' %}
 {%- else %}
     {% set valueType = 'std::span<{{ typeName }}>' %}
 {%- endif -%}
 
 [[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() const noexcept {
-    auto const length = *std::bit_cast<{{ entry.lengthType.primitiveType | cpp }} const*>(buffer_ + position());
+    auto const length = *std::bit_cast<{{ lengthType.primitiveType | cpp }} const*>(buffer_ + position());
     auto const result = {{ valueType }}(buffer_ + this->position() + sizeof(length), length);
     this->position(position() + sizeof(length) + length);
     return result;
@@ -322,7 +324,7 @@ private:
 {{ className }}& {{ methodName | methodName_SET}}({{valueType}} value) {
     auto const lengthPosition = this->position();
     this->position(lengthPosition + sizeof(lengthPosition));
-    *std::bit_cast<{{ entry.lengthType.primitiveType | cpp }}*>(buffer_ + lengthPosition) = value.size();
+    *std::bit_cast<{{ lengthType.primitiveType | cpp }}*>(buffer_ + lengthPosition) = value.size();
     if (value.size() > 0) [[likely]] {
         auto const pos = this->position();
         auto const size = value.size() * sizeof({{ typeName }});
