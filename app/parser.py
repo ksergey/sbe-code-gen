@@ -314,9 +314,7 @@ class Parser:
     def getField(self, node: ET.Element, offset: int) -> Field:
         nameStr = attr(node, 'name')
         type = self.getEncodedTypeByName(attr(node, 'type'))
-        presence = attr(node, 'presence', Presence.REQUIRED, cast=Presence)
-        if presence == None:
-            presence = type.presence
+        presence = attr(node, 'presence', type.presence if isinstance(type, Type) else Presence.REQUIRED, cast=Presence)
         valueRef = attr(node, 'valueRef', None)
 
         if valueRef != None and not self.isValidValueRef(valueRef):
