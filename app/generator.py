@@ -202,15 +202,12 @@ class Generator(ABC):
 
     @staticmethod
     def makeDataDefinition(data: Data) -> dict:
-        # lengthType and varDataType added for easier access inside jinja template engine
         return {
             'token': 'data',
             'name': data.name,
             'id': data.id,
             'description': data.description,
             'type': Generator.makeEncodedTypeDefinition(data.type),
-            'lengthType': Generator.makeEncodedTypeDefinition(data.type.containedTypes['length']),
-            'varDataType': Generator.makeEncodedTypeDefinition(data.type.containedTypes['varData']),
             'semanticType': data.semanticType,
             'sinceVersion': data.sinceVersion,
             'deprecated': data.deprecated
