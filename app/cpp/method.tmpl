@@ -56,10 +56,10 @@
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ valueType }} {{ methodName | methodName_GET }}() noexcept {
     {% if type.primitiveType == 'char' %}
-        {% if type.length == 1 %}
-    return '{{ type.constValue }}';
-        {% else %}
+        {% if type.length > 1 %}
     return "{{ type.constValue }}";
+        {% else %}
+    return '{{ type.constValue }}';
         {% endif %}
     {% else %}
     return {{ type.constValue }};
@@ -67,23 +67,23 @@
 }
 {% else -%}
 [[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() const noexcept {
-    {% if type.length == 1 %}
-    return *std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }});
-    {% else %}
+    {% if type.length > 1 %}
     // TODO: trim zeros on type.name == 'char'
     return {{ valueType }}(std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }}), {{ type.length }});
+    {% else %}
+    return *std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }});
     {% endif %}
 }
 {% endif %}
 {% if entry.presence != 'constant' %}
 
 {{ className }}& {{ methodName | methodName_SET }}({{ valueType }} value) noexcept {
-    {% if type.length == 1 %}
-    *std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }}) = value;
-    {% else %}
+    {% if type.length > 1 %}
     std::size_t const length = value.size() > {{ type.length }} ? {{ type.length }} : value.size();
     std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), length * sizeof({{ typeName }}));
     // TODO: pad zeros on type.name == 'char'
+    {% else %}
+    *std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }}) = value;
     {% endif %}
     return *this;
 }
