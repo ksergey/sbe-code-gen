@@ -49,7 +49,7 @@
     {% if type.primitiveType == 'char' %}
         {% set valueType = 'std::string_view' %}
     {% else %}
-        {% set valueType = 'std::span<' ~ typeName ~ '>' %}
+        {% set valueType = 'std::span<' ~ typeName ~ ' const>' %}
     {% endif %}
 {%- endif %}
 
@@ -311,14 +311,14 @@ private:
 {%- if varDataType.primitiveType == 'char' %}
     {% set valueType = 'std::string_view' %}
 {%- else %}
-    {% set valueType = 'std::span<' ~ typeName ~ '>' %}
+    {% set valueType = 'std::span<' ~ typeName ~ ' const>' %}
 {%- endif -%}
 
-[[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() const noexcept {
+[[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() noexcept {
     auto const length = *std::bit_cast<{{ lengthType.primitiveType | cpp }} const*>(buffer_ + position());
-    auto const result = {{ valueType }}(buffer_ + this->position() + sizeof(length), length);
+    auto const begin = std::bit_cast<{{ varDataType.primitiveType | cpp }} const*>(buffer_ + this->position() + sizeof(length));
     this->position(position() + sizeof(length) + length);
-    return result;
+    return {{ valueType }}(begin, length);
 }
 
 {{ className }}& {{ methodName | methodName_SET}}({{valueType}} value) {
