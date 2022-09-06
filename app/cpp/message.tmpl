@@ -82,6 +82,10 @@ public:
         return {{ message.blockLength }};
     }
 
+    [[nodiscard]] static constexpr std::uint16_t sbeTemplateId() noexcept {
+        return {{ message.id }};
+    }
+
     std::size_t sbeCheckPosition(std::size_t position) {
         if (position > bufferLength_) [[unlikely]] {
             throw std::runtime_error("buffer too short for message {{ message.name }} [E100]");
@@ -96,6 +100,17 @@ public:
     {{ message.name | className }}& wrapForDecode(char* buffer, std::size_t offset, std::size_t actingBlockLength,
             std::uint16_t actingVersion, std::size_t bufferLength) {
         return *this = {{ message.name | className }}(buffer, offset, bufferLength, actingBlockLength, actingVersion);
+    }
+
+    {{ message.name | className }}& wrapAndApplyHeader(char* buffer, std::size_t offset, std::size_t bufferLength) {
+        {{ schema.headerType.name | className }}(buffer, offset, bufferLength, sbeSchemaVersion())
+            .blockLength(sbeBlockLength())
+            .templateId(sbeTemplateId())
+            .schemaId(sbeSchemaId())
+            .version(sbeSchemaVersion())
+        ;
+
+        return *this = {{ message.name | className }}(buffer, offset + {{ schema.headerType.name | className }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
     }
 
     [[nodiscard]] std::size_t encodedLength() const noexcept {
