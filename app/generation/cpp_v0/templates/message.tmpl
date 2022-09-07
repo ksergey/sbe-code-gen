@@ -54,11 +54,11 @@ public:
         return offset_;
     }
 
-    [[nodiscard]] std::size_t position() const noexcept {
+    [[nodiscard]] std::size_t sbePosition() const noexcept {
         return position_;
     }
 
-    void position(std::size_t value) {
+    void sbePosition(std::size_t value) {
         position_ = sbeCheckPosition(value);
     }
 
@@ -102,6 +102,10 @@ public:
         return *this = {{ message.name | className }}(buffer, offset, bufferLength, actingBlockLength, actingVersion);
     }
 
+    {{ message.name | className }}& sbeRewind() {
+        return wrapForDecode(buffer_, offset_, actingBlockLength_, actingVersion_, bufferLength_);
+    }
+
     {{ message.name | className }}& wrapAndApplyHeader(char* buffer, std::size_t offset, std::size_t bufferLength) {
         {{ schema.headerType.name | className }}(buffer, offset, bufferLength, sbeSchemaVersion())
             .blockLength(sbeBlockLength())
@@ -114,15 +118,17 @@ public:
     }
 
     [[nodiscard]] std::size_t encodedLength() const noexcept {
-        return position() - offset_;
+        return sbePosition() - offset_;
     }
 
 {% for entry in message.fields %}
     {{ method.generate(message.name | className, entry) | indent }}
 {% endfor -%}
+
 private:
     std::size_t* positionPtr() noexcept {
         return &position_;
     }
 };
+
 {% endblock %}

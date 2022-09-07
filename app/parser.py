@@ -116,6 +116,11 @@ class Parser:
         valueRef = attr(node, 'valueRef', None)
         constValue = None
 
+        '''
+        For presence=constant
+            constValue = node.text on valueRef not set
+            constValue = valueRef on valueRef set
+        '''
         if valueRef != None:
             if presence != Presence.CONSTANT:
                 raise Exception(f'presence must be constant when valueRef is set (type "{nameStr}")')
@@ -134,11 +139,14 @@ class Parser:
                 enumType = self.getEncodedTypeByName(enumName)
                 assert (isinstance(enumType, Enum)), "not an enum type"
                 constValue = enumType.validValueByName[enumValueName].value
-        '''
-        For presence=constant
-            constValue = node.text on valueRef not set
-            constValue = valueRef on valueRef set
-        '''
+
+        characterEncoding = None
+        if primitiveType.name == 'char':
+            characterEncoding = attr(node, 'characterEncoding', "US-ASCII")
+        else:
+            characterEncoding = attr(node, 'characterEncoding', None)
+        if characterEncoding != None:
+            characterEncoding.strip()
 
         return Type(
             name = nameStr,
@@ -154,7 +162,8 @@ class Parser:
             sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
             deprecated = attr(node, 'deprecated', None, cast=int),
             valueRef = valueRef,
-            constValue = constValue
+            constValue = constValue,
+            characterEncoding = characterEncoding
         )
 
     def getComposite(self, node: ET.Element, offset: Optional[int] = None) -> Composite:

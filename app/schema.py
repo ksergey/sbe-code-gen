@@ -37,6 +37,7 @@ class Type:
     deprecated: Optional[int] = field(default=None)
     valueRef: Optional[str] = field(default=None)
     constValue: Optional[str] = field(default=None)
+    characterEncoding: Optional[str] = field(default=None)
 
     def encodedLength(self) -> int:
         if self.presence == Presence.CONSTANT:
@@ -89,10 +90,20 @@ class Composite:
 
     ''' Return True on composite is valid variable length type '''
     def isValidVariableLength(self) -> bool:
-        if not self.findType('length'):
+        lengthType = self.findType('length')
+        if lengthType == None:
             return False
-        if not self.findType('varData'):
+        if lengthType.primitiveType.name not in ('uint8', 'uint16', 'uint32', 'uint64'):
             return False
+
+        varDataType = self.findType('varData')
+        if varDataType == None:
+            return False
+        if varDataType.length != 0:
+            return False
+        if varDataType.primitiveType.name not in ('char', 'uint8'):
+            return False
+
         return True
 
 @dataclass(frozen=True)

@@ -68,8 +68,13 @@
 {% else -%}
 [[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() const noexcept {
     {% if type.length > 1 %}
-    // TODO: trim zeros on type.name == 'char'
-    return {{ valueType }}(std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }}), {{ type.length }});
+    auto result = {{ valueType }}(std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }}), {{ type.length }});
+        {% if type.primitiveType == 'char' %}
+    if (auto const found = result.find('\0'); found != result.npos) {
+        result = result.substr(0, found);
+    }
+        {% endif %}
+    return result;
     {% else %}
     return *std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }});
     {% endif %}
@@ -80,10 +85,30 @@
 {{ className }}& {{ methodName | methodName_SET }}({{ valueType }} value) noexcept {
     {% if type.length > 1 %}
     std::size_t const length = value.size() > {{ type.length }} ? {{ type.length }} : value.size();
-    std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), length * sizeof({{ typeName }}));
-    // TODO: pad zeros on type.name == 'char'
+    auto begin = std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }});
+    std::memcpy(begin, value.data(), length * sizeof({{ typeName }}));
+        {% if type.primitiveType == 'char' %}
+    for (std::size_t pos = length; pos < {{ type.length }}; ++pos) {
+        *(begin + pos) = '\0';
+    }
+        {% endif %}
     {% else %}
     *std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }}) = value;
+    {% endif %}
+    return *this;
+}
+{% endif %}
+
+{% if entry.presence == 'optional' %}
+{{ className }}& {{ methodName | methodName_RESET }}() noexcept {
+    {% if type.length > 1 %}
+    constexpr auto null = {{ type.nullValue | cpp }};
+    auto begin = std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }});
+    for (std::size_t pos = 0; pos < {{ type.length }}; ++pos) {
+        *(begin + pos) = null;
+    }
+    {% else %}
+    *std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }}) = {{ type.nullValue | cpp }};
     {% endif %}
     return *this;
 }
@@ -95,7 +120,11 @@
 }
 {% else %}
 [[nodiscard]] bool {{ methodName | methodName_IS_PRESENT }}() const noexcept {
+    {% if type.length > 1 %}
+    return {{ type.nullValue | cpp }} != *std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }});
+    {% else %}
     return {{ type.nullValue | cpp }} != {{ methodName | methodName_GET }}();
+    {% endif %}
 }
 {% endif -%}
 
@@ -160,6 +189,12 @@
 }
 {% endif %}
 
+{% if entry.presence == 'optional' %}
+{{ className }}& {{ methodName | methodName_RESET }}() noexcept {
+    return {{ methodName | methodName_SET }}({{ valueType }}::NULL_VALUE);
+}
+{% endif %}
+
 {% if entry.presence != 'optional' %}
 [[nodiscard]] static constexpr bool {{ methodName | methodName_IS_PRESENT }}() noexcept {
     return true;
@@ -221,9 +256,9 @@ public:
         {{ entry.dimensionType.name | className }} dimension(buffer, *pos, bufferLength, actingVersion);
         buffer_ = buffer;
         bufferLength_ = bufferLength;
-        index_ = 0;
-        count_ = dimension.numInGroup();
         blockLength_ = dimension.blockLength();
+        count_ = dimension.numInGroup();
+        index_ = 0;
         actingVersion_ = actingVersion;
         initialPosition_ = *pos;
         positionPtr_ = pos;
@@ -233,12 +268,12 @@ public:
 
     {{ entry.name | className }}& wrapForEncode(char* buffer, std::size_t count, std::size_t* pos, std::uint16_t actingVersion,
             std::size_t bufferLength) {
+        buffer_ = buffer;
+        bufferLength_ = bufferLength;
         {{ entry.dimensionType.name | className }}(buffer, *pos, bufferLength, actingVersion)
             .blockLength(sbeBlockLength())
             .numInGroup(count)
         ;
-        buffer_ = buffer;
-        bufferLength_ = bufferLength;
         index_ = 0;
         count_ = count;
         blockLength_ = {{ entry.blockLength }};
@@ -253,11 +288,11 @@ public:
         return {{ entry.blockLength }};
     }
 
-    [[nodiscard]] std::size_t position() const noexcept {
+    [[nodiscard]] std::size_t sbePosition() const noexcept {
         return *positionPtr_;
     }
 
-    void position(std::size_t value) {
+    void sbePosition(std::size_t value) {
         *positionPtr_ = sbeCheckPosition(value);
     }
 
@@ -292,11 +327,24 @@ public:
 {% for field in entry.fields %}
     {{ generate(entry.name | className, field) | indent }}
 {% endfor -%}
+
 private:
     std::size_t* positionPtr() noexcept {
         return positionPtr_;
     }
 };
+
+{{ entry.name | className }} {{ entry.name | methodName_GET }}() {
+    {{ entry.name | className }} group;
+    group.wrapForDecode(buffer_, positionPtr(), actingVersion_, bufferLength_);
+    return group;
+}
+
+{{ entry.name | className }} {{ entry.name | methodName_GET_COUNT }}(std::size_t count) {
+    {{ entry.name | className }} group;
+    group.wrapForEncode(buffer_, count, positionPtr(), actingVersion_, bufferLength_);
+    return group;
+}
 {% endmacro %}
 
 {# ------------------------------------------------------------- #}
@@ -306,29 +354,39 @@ private:
 {%- set methodName = entry.name %}
 {%- set lengthType = (entry.type.containedTypes | selectattr('name', 'equalto', 'length') | first) %}
 {%- set varDataType = (entry.type.containedTypes | selectattr('name', 'equalto', 'varData') | first) %}
-{%- set typeName = varDataType.primitiveType | cpp %}
 
-{%- if varDataType.primitiveType == 'char' %}
+{%- if varDataType.primitiveType == 'char' or varDataType.primitiveType == 'uint8' %}
+    {% set typeName = 'char' | cpp %}
+{%- else %}
+    {% set typeName = varDataType.primitiveType | cpp %}
+{%- endif %}
+
+{%- if varDataType.primitiveType == 'char' or varDataType.primitiveType == 'uint8' %}
     {% set valueType = 'std::string_view' %}
 {%- else %}
     {% set valueType = 'std::span<' ~ typeName ~ ' const>' %}
 {%- endif -%}
 
 [[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() noexcept {
-    auto const length = *std::bit_cast<{{ lengthType.primitiveType | cpp }} const*>(buffer_ + position());
-    auto const begin = std::bit_cast<{{ varDataType.primitiveType | cpp }} const*>(buffer_ + this->position() + sizeof(length));
-    this->position(position() + sizeof(length) + length);
+    auto const length = *std::bit_cast<{{ lengthType.primitiveType | cpp }} const*>(buffer_ + sbePosition());
+    auto const begin = std::bit_cast<{{ typeName }} const*>(buffer_ + sbePosition() + sizeof(length));
+    sbePosition(sbePosition() + sizeof(length) + length);
     return {{ valueType }}(begin, length);
 }
 
+[[nodiscard]] bool {{ methodName | methodName_IS_PRESENT }}() const noexcept {
+    auto const length = *std::bit_cast<{{ lengthType.primitiveType | cpp }} const*>(buffer_ + sbePosition());
+    return length > 0;
+}
+
 {{ className }}& {{ methodName | methodName_SET}}({{valueType}} value) {
-    auto const lengthPosition = this->position();
-    this->position(lengthPosition + sizeof(lengthPosition));
+    auto const lengthPosition = sbePosition();
+    sbePosition(lengthPosition + sizeof({{ lengthType.primitiveType | cpp }}));
     *std::bit_cast<{{ lengthType.primitiveType | cpp }}*>(buffer_ + lengthPosition) = value.size();
     if (value.size() > 0) [[likely]] {
-        auto const pos = this->position();
+        auto const pos = sbePosition();
         auto const size = value.size() * sizeof({{ typeName }});
-        this->position(pos + size);
+        sbePosition(pos + size);
         std::memcpy(buffer_ + pos, value.data(), size);
     }
     return *this;

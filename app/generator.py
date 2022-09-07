@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from app.schema import *
 
-class Generator(ABC):
+class GeneratorBase(ABC):
     primitiveTypeByName = {
         'char':     PrimitiveType('char',   1,  "CHAR_NULL",    "CHAR_MIN",     "CHAR_MAX"),
         'int8':     PrimitiveType('int8',   1,  "INT8_NULL",    "INT8_MIN",     "INT8_MAX"),
@@ -34,15 +34,15 @@ class Generator(ABC):
         ir['version'] = schema.version
         ir['byteOrder'] = schema.byteOrder.value
         ir['description'] = schema.description
-        ir['headerType'] = Generator.makeEncodedTypeDefinition(schema.headerType)
+        ir['headerType'] = GeneratorBase.makeEncodedTypeDefinition(schema.headerType)
 
         ir['types'] = []
         for type in schema.types.values():
-            ir['types'].append(Generator.makeEncodedTypeDefinition(type))
+            ir['types'].append(GeneratorBase.makeEncodedTypeDefinition(type))
 
         ir['messages'] = []
         for message in schema.messages.values():
-            ir['messages'].append(Generator.makeMessageDefinition(message))
+            ir['messages'].append(GeneratorBase.makeMessageDefinition(message))
 
         self._generateImpl(ir)
 
@@ -50,13 +50,13 @@ class Generator(ABC):
     def makeEncodedTypeDefinition(type: EncodedType) -> dict:
         assert (isinstance(type, (Type, Composite, Enum, Set))), "unknown type"
         if isinstance(type, Type):
-            return Generator.makeTypeDefinition(type)
+            return GeneratorBase.makeTypeDefinition(type)
         if isinstance(type, Composite):
-            return Generator.makeCompositeDefinition(type)
+            return GeneratorBase.makeCompositeDefinition(type)
         if isinstance(type, Enum):
-            return Generator.makeEnumDefinition(type)
+            return GeneratorBase.makeEnumDefinition(type)
         if isinstance(type, Set):
-            return Generator.makeSetDefinition(type)
+            return GeneratorBase.makeSetDefinition(type)
 
     @staticmethod
     def makeTypeDefinition(type: Type) -> dict:
@@ -75,6 +75,7 @@ class Generator(ABC):
             'sinceVersion': type.sinceVersion,
             'deprecated': type.deprecated,
             'constValue': type.constValue,
+            'characterEncoding': type.characterEncoding,
             'encodedLength': type.encodedLength()
         }
 
@@ -85,15 +86,15 @@ class Generator(ABC):
             assert (isinstance(containedType, (Type, Composite, Enum, Set, Ref))), "unknown type"
             entry = None
             if isinstance(containedType, Type):
-                entry = Generator.makeTypeDefinition(containedType)
+                entry = GeneratorBase.makeTypeDefinition(containedType)
             elif isinstance(containedType, Composite):
-                entry = Generator.makeCompositeDefinition(containedType)
+                entry = GeneratorBase.makeCompositeDefinition(containedType)
             elif isinstance(containedType, Enum):
-                entry = Generator.makeEnumDefinition(containedType)
+                entry = GeneratorBase.makeEnumDefinition(containedType)
             elif isinstance(containedType, Set):
-                entry = Generator.makeSetDefinition(containedType)
+                entry = GeneratorBase.makeSetDefinition(containedType)
             elif isinstance(containedType, Ref):
-                entry = Generator.makeEncodedTypeDefinition(containedType.type)
+                entry = GeneratorBase.makeEncodedTypeDefinition(containedType.type)
                 entry['name'] = containedType.name
                 entry['offset'] = containedType.offset
                 entry['description'] = containedType.description
@@ -167,7 +168,7 @@ class Generator(ABC):
             'name': field.name,
             'id': field.id,
             'description': field.description,
-            'type': Generator.makeEncodedTypeDefinition(field.type),
+            'type': GeneratorBase.makeEncodedTypeDefinition(field.type),
             'offset': field.offset,
             'presence': field.presence.value,
             'valueRef': field.valueRef,
@@ -183,11 +184,11 @@ class Generator(ABC):
             assert (isinstance(field, (Field, Group, Data))), "unknown group field"
             entry = None
             if isinstance(field, Field):
-                entry = Generator.makeFieldDefinition(field)
+                entry = GeneratorBase.makeFieldDefinition(field)
             elif isinstance(field, Group):
-                entry = Generator.makeGroupDefinition(field)
+                entry = GeneratorBase.makeGroupDefinition(field)
             elif isinstance(field, Data):
-                entry = Generator.makeDataDefinition(field)
+                entry = GeneratorBase.makeDataDefinition(field)
             fields.append(entry)
 
         return {
@@ -195,7 +196,7 @@ class Generator(ABC):
             'name': group.name,
             'id': group.id,
             'description': group.description,
-            'dimensionType': Generator.makeEncodedTypeDefinition(group.dimensionType),
+            'dimensionType': GeneratorBase.makeEncodedTypeDefinition(group.dimensionType),
             'blockLength': group.blockLength,
             'fields': fields
         }
@@ -207,7 +208,7 @@ class Generator(ABC):
             'name': data.name,
             'id': data.id,
             'description': data.description,
-            'type': Generator.makeEncodedTypeDefinition(data.type),
+            'type': GeneratorBase.makeEncodedTypeDefinition(data.type),
             'semanticType': data.semanticType,
             'sinceVersion': data.sinceVersion,
             'deprecated': data.deprecated
@@ -220,11 +221,11 @@ class Generator(ABC):
             assert (isinstance(field, (Field, Group, Data))), "unknown message field"
             entry = None
             if isinstance(field, Field):
-                entry = Generator.makeFieldDefinition(field)
+                entry = GeneratorBase.makeFieldDefinition(field)
             elif isinstance(field, Group):
-                entry = Generator.makeGroupDefinition(field)
+                entry = GeneratorBase.makeGroupDefinition(field)
             elif isinstance(field, Data):
-                entry = Generator.makeDataDefinition(field)
+                entry = GeneratorBase.makeDataDefinition(field)
             fields.append(entry)
 
         return {
