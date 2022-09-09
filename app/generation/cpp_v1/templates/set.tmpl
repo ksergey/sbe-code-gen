@@ -1,0 +1,118 @@
+{% extends 'document.tmpl' %}
+
+{% block content %}
+/// @brief Set {{ type.name }}
+{% if type.description %}
+/// {{ type.description }}
+{% endif %}
+enum class {{ type.name | className }} : {{ type.encodingType | cpp }} {
+{% for entry in type.choices %}
+    {% if entry.description != None %}
+    /// {{ entry.description }}
+    {% endif %}
+    {{ entry.name }} = (1 << {{ entry.value }}){% if loop.nextitem is defined %},{% endif +%}
+{% endfor %}
+};
+
+namespace v2 {
+
+{% set type_class_name = type.name | format_class_name %}
+{% set underlying_type = type.encodingType | replace_keyword %}
+
+class {{ type_class_name }} final {
+private:
+    char* buffer_ = nullptr;
+    std::size_t bufferLength_ = 0;
+    std::size_t offset_ = 0;
+    std::size_t actingVersion_ = 0;
+
+public:
+    {{ type_class_name }}() = default;
+
+    {{ type_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
+            std::uint16_t actingVersion)
+        : buffer_(buffer)
+        , bufferLength_(bufferLength)
+        , offset_(offset)
+        , actingVersion_(actingVersion)
+    {
+        if ((offset_ + encodedLength()) > bufferLength_) [[unlikely]] {
+            throw std::runtime_error("buffer too short for flyweight {{ type.name }} [E107]");
+        }
+    }
+
+    {{ type_class_name }}(char* buffer, std::size_t bufferLength, std::uint16_t actingVersion)
+        : {{ type_class_name }}(buffer, 0, bufferLength, actingVersion)
+    {}
+
+    {{ type_class_name }}(char* buffer, std::size_t bufferLength)
+        : {{ type_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion())
+    {}
+
+    {{ type_class_name }}& wrap(char* buffer, std::size_t offset, std::uint16_t actingVersion,
+            std::size_t bufferLength) {
+        return *this = {{ type_class_name }}(buffer, offset, bufferLength, actingVersion);
+    }
+
+    [[nodiscard]] static constexpr std::size_t encodedLength() noexcept {
+        return {{ type.encodedLength }};
+    }
+
+    [[nodiscard]] std::size_t offset() const noexcept {
+        return offset_;
+    }
+
+    [[nodiscard]] char const* buffer() const noexcept {
+        return buffer_;
+    }
+
+    [[nodiscard]] char* buffer() noexcept {
+        return buffer_;
+    }
+
+    [[nodiscard]] std::size_t bufferLength() const noexcept {
+        return bufferLength_;
+    }
+
+    [[nodiscard]] std::uint16_t actingVersion() const noexcept {
+        return actingVersion_;
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
+        return {{ schema.id }};
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
+        return {{ schema.version }};
+    }
+
+    {{ type_class_name }}& clear() noexcept {
+        return rawValue(0);
+    }
+
+    [[nodiscard]] {{ underlying_type }} rawValue() const noexcept {
+        return *std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_);
+    }
+
+    {{ type_class_name }}& rawValue({{ underlying_type }} value) noexcept {
+        *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_) = value;
+        return *this;
+    }
+
+{% for choice in type.choices %}
+    [[nodiscard]] bool {{ choice.name | format_method_name_get }}() const noexcept {
+        constexpr auto bit = {{ underlying_type }}(1 << {{ choice.value }});
+        return bit == (rawValue() & bit);
+    }
+
+    {{ type_class_name }}& {{ choice.name | format_method_name_set }}(bool value) noexcept {
+        constexpr auto bit = {{ underlying_type }}(1 << {{ choice.value }});
+        return rawValue(value ? (rawValue() | bit) : (rawValue() & ~bit);
+    }
+
+{% endfor %}
+};
+
+} // namespace v2
+
+{% endblock -%}

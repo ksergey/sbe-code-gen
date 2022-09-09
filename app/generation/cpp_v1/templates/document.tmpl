@@ -1,0 +1,32 @@
+// Auto-generated file
+
+#pragma once
+
+{% block include %}
+#include <bit>
+#include <cstdint>
+#include <cstring>
+#include <limits>
+#include <span>
+#include <stdexcept>
+#include <string_view>
+
+{% for include in includes | sort %}
+#include "{{ include }}"
+{% endfor %}
+{% endblock %}
+
+{% if schema.package != None %}
+namespace {{ schema.package | join('::') }} {
+{% else %}
+namespace sbe {
+{% endif %}
+
+{% block content %}
+{% endblock %}
+
+{% if schema.package != None %}
+} // namespace {{ schema.package | join('::') }}
+{% else %}
+} // namespace sbe
+{% endif %}
