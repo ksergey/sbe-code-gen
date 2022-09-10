@@ -1,241 +1,274 @@
-{% macro generate(className, entry) %}
-/// @section {{ entry.name }} ({{ entry.token }})
-{% if entry.description %}
-/// {{ entry.description }}
-{% endif %}
-
-{% if entry.token == 'type' %}
-    {{- generate_Type(className, entry) }}
+{% macro generate(class_name, entry) %}
+{%- if entry.token == 'type' %}
+    {{- generate_type(class_name, entry) }}
 {%- elif entry.token == 'composite' %}
-    {{- generate_Composite(className, entry) }}
+    {{- generate_composite(class_name, entry) }}
 {%- elif entry.token == 'enum' %}
-    {{- generate_Enum(className, entry) }}
+    {{- generate_enum(class_name, entry) }}
 {%- elif entry.token == 'set' %}
-    {{- generate_Set(className, entry) }}
+    {{- generate_set(class_name, entry) }}
 {%- elif entry.token == 'field' %}
     {%- if entry.type.token == 'type' %}
-        {{- generate_Type(className, entry) }}
+        {{- generate_type(class_name, entry) }}
     {%- elif entry.type.token == 'composite' %}
-        {{- generate_Composite(className, entry) }}
+        {{- generate_composite(class_name, entry) }}
     {%- elif entry.type.token == 'enum' %}
-        {{- generate_Enum(className, entry) }}
+        {{- generate_enum(class_name, entry) }}
     {%- elif entry.type.token == 'set' %}
-        {{- generate_Set(className, entry) }}
+        {{- generate_set(class_name, entry) }}
     {%- endif %}
 {%- elif entry.token == 'group' %}
-    {{- generate_Group(className, entry) }}
+    {{- generate_group(class_name, entry) }}
 {%- elif entry.token == 'data' %}
-    {{- generate_Data(className, entry) }}
+    {{- generate_data(class_name, entry) }}
 {%- endif %}
-
-/// @endsection
 {% endmacro %}
 
-{# ------------------------------------------------------------- #}
+{% macro generate_type(class_name, entry) -%}
+{%- if entry.token == 'field' %}
+    {% set type = entry.type -%}
+{%- else %}
+    {% set type = entry -%}
+{%- endif %}
 
-{% macro generate_Type(className, entry) %}
+{%- if type.length == 1 %}
+    {{- generate_type_single(class_name, entry) }}
+{%- elif type.length > 1 %}
+    {{- generate_type_array(class_name, entry) }}
+{%- endif %}
+{%- endmacro %}
+
+{% macro generate_type_single(class_name, entry) %}
 
 {%- if entry.token == 'field' %}
-    {% set type = entry.type %}
-{% else %}
-    {% set type = entry %}
+    {% set type = entry.type -%}
+{%- else %}
+    {% set type = entry -%}
 {%- endif %}
-
-{%- set methodName = entry.name %}
-{%- set typeName = type.primitiveType | cpp %}
-{%- set valueType = typeName %}
-
-{%- if type.length > 1 %}
-    {% if type.primitiveType == 'char' %}
-        {% set valueType = 'std::string_view' %}
-    {% else %}
-        {% set valueType = 'std::span<' ~ typeName ~ ' const>' %}
-    {% endif %}
-{%- endif %}
+{%- set method_name = entry.name -%}
+{%- set underlying_type = type.primitiveType | cpp -%}
 
 {%- if entry.presence == 'constant' %}
-[[nodiscard]] static constexpr {{ valueType }} {{ methodName | methodName_GET }}() noexcept {
+[[nodiscard]] static constexpr {{ underlying_type }} {{ method_name | format_method_name_get }}() noexcept {
     {% if type.primitiveType == 'char' %}
-        {% if type.length > 1 %}
-    return "{{ type.constValue }}";
-        {% else %}
     return '{{ type.constValue }}';
-        {% endif %}
     {% else %}
     return {{ type.constValue }};
     {% endif %}
 }
-{% else -%}
-[[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() const noexcept {
-    {% if type.length > 1 %}
-    auto result = {{ valueType }}(std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }}), {{ type.length }});
-        {% if type.primitiveType == 'char' %}
-    if (auto const found = result.find('\0'); found != result.npos) {
-        result = result.substr(0, found);
-    }
-        {% endif %}
-    return result;
-    {% else %}
-    return *std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }});
-    {% endif %}
-}
-{% endif %}
-{% if entry.presence != 'constant' %}
+{%- endif %}
 
-{{ className }}& {{ methodName | methodName_SET }}({{ valueType }} value) noexcept {
-    {% if type.length > 1 %}
-    std::size_t const length = value.size() > {{ type.length }} ? {{ type.length }} : value.size();
-    auto begin = std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }});
-    std::memcpy(begin, value.data(), length * sizeof({{ typeName }}));
-        {% if type.primitiveType == 'char' %}
-    for (std::size_t pos = length; pos < {{ type.length }}; ++pos) {
-        *(begin + pos) = '\0';
-    }
-        {% endif %}
-    {% else %}
-    *std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }}) = value;
-    {% endif %}
+{%- if entry.presence == 'required' or entry.presence == 'optional' %}
+[[nodiscard]] {{ underlying_type }} {{ method_name | format_method_name_get }}() const noexcept {
+    return *std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }});
+}
+
+{% endif %}
+
+{%- if entry.presence != 'constant' %}
+{{ class_name }}& {{ method_name | format_method_name_get }}({{ underlying_type }} value) noexcept {
+    *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }}) = value;
     return *this;
 }
+
 {% endif %}
 
-{% if entry.presence == 'optional' %}
-{{ className }}& {{ methodName | methodName_RESET }}() noexcept {
-    {% if type.length > 1 %}
-    constexpr auto null = {{ type.nullValue | cpp }};
-    auto begin = std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }});
-    for (std::size_t pos = 0; pos < {{ type.length }}; ++pos) {
-        *(begin + pos) = null;
-    }
-    {% else %}
-    *std::bit_cast<{{ typeName }}*>(buffer_ + offset_ + {{ entry.offset }}) = {{ type.nullValue | cpp }};
-    {% endif %}
-    return *this;
+{%- if entry.presence == 'optional' %}
+{{ class_name }}& {{ method_name | format_method_name_reset }}() noexcept {
+    return {{ method_name | format_method_name_set }}({{ type.nullValue | cpp}});
 }
+
 {% endif %}
 
-{% if entry.presence != 'optional' %}
-[[nodiscard]] static constexpr bool {{ methodName | methodName_IS_PRESENT }}() noexcept {
+{%- if entry.presence == 'required' or entry.presence == 'constant' %}
+[[nodiscard]] static constexpr bool {{ method_name | format_method_name_is_present }}() noexcept {
     return true;
 }
-{% else %}
-[[nodiscard]] bool {{ methodName | methodName_IS_PRESENT }}() const noexcept {
-    {% if type.length > 1 %}
-    return {{ type.nullValue | cpp }} != *std::bit_cast<{{ typeName }} const*>(buffer_ + offset_ + {{ entry.offset }});
-    {% else %}
-    return {{ type.nullValue | cpp }} != {{ methodName | methodName_GET }}();
-    {% endif %}
-}
-{% endif -%}
+{% endif %}
 
+{%- if entry.presence == 'optional' %}
+[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
+    return {{ type.nullValue | cpp }} != {{ method_name | format_method_name_get }}();
+}
+{% endif %}
 {% endmacro %}
 
-{# ------------------------------------------------------------- #}
-
-{% macro generate_Composite(className, entry) %}
+{% macro generate_type_array(class_name, entry) %}
 
 {%- if entry.token == 'field' %}
-    {% set type = entry.type %}
-{% else %}
-    {% set type = entry %}
+    {%- set type = entry.type -%}
+{%- else %}
+    {%- set type = entry -%}
 {%- endif %}
-
-{%- set methodName = entry.name %}
-{%- set valueType = type.name | className %}
-
-[[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() const noexcept {
-    return {{ valueType }}(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_);
-}
-
-[[nodiscard]] bool {{ methodName | methodName_IS_PRESENT }}() const noexcept {
-    return {{ methodName | methodName_GET }}().{{ type.containedTypes[0].name | methodName_IS_PRESENT }}();
-}
-{% endmacro %}
-
-{# ------------------------------------------------------------- #}
-
-{% macro generate_Enum(className, entry) %}
-
-{%- if entry.token == 'field' %}
-    {% set type = entry.type %}
-    {% if entry.valueRef != None %}
-        {% set constValue = entry.valueRef %}
-    {% else %}
-        {% set constValue = type.constValue %}
-    {% endif %}
-{% else %}
-    {% set type = entry %}
-    {% set constValue = type.constValue %}
+{%- set method_name = entry.name -%}
+{%- set underlying_type = type.primitiveType | cpp -%}
+{%- if type.primitiveType == 'char' %}
+    {% set value_type = 'std::string_view' -%}
+{%- else %}
+    {% set value_type = 'std::span<' ~ underlying_type ~ ' const>' -%}
 {%- endif %}
-
-{%- set methodName = entry.name %}
-{%- set underlyingType = type.encodingType | cpp %}
-{%- set valueType = type.name | className %}
 
 {%- if entry.presence == 'constant' %}
-[[nodiscard]] static constexpr {{ valueType }} {{ methodName | methodName_GET }}() noexcept {
-    return {{ valueType }}::{{ constValue.split('.')[1] }};
+[[nodiscard]] static constexpr {{ value_type }} {{ method_name | format_method_name_get }}() noexcept {
+    {% if type.primitiveType == 'char' %}
+    return "{{ type.constValue }}";
+    {% else %}
+    assert(false, "not implemeted");
+    {% endif %}
 }
-{% else -%}
-[[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() const noexcept {
-    return {{ valueType }}(*std::bit_cast<{{ underlyingType }} const*>(buffer_ + offset_ + {{ entry.offset }}));
-}
-{% endif %}
-{% if entry.presence != 'constant' %}
 
-{{ className }}& {{ methodName | methodName_SET }}({{ valueType }} value) noexcept {
-    *std::bit_cast<{{ underlyingType }}*>(buffer_ + offset_ + {{ entry.offset }}) = static_cast<{{ underlyingType }}>(value);
+{% endif %}
+
+{%- if entry.presence == 'required' or entry.presence == 'optional' %}
+[[nodiscard]] {{ value_type }} {{ method_name | format_method_name_get }}() const noexcept {
+    return {{ value_type }}(std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }}), {{ type.length }});
+}
+
+{% endif %}
+
+{%- if entry.presence != 'constant' and type.primitiveType != 'char' %}
+{{ class_name }}& {{ method_name | format_method_name_get }}({{ value_type }} value) noexcept {
+    if (value.size() != {{ type.length }}) [[unlikely]] {
+        # TODO
+        throw std::runtime_error("...");
+    }
+    std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), {{ underlying_type }} * {{ type.length }});
     return *this;
 }
+
 {% endif %}
 
-{% if entry.presence == 'optional' %}
-{{ className }}& {{ methodName | methodName_RESET }}() noexcept {
-    return {{ methodName | methodName_SET }}({{ valueType }}::NULL_VALUE);
+{%- if entry.presence != 'constant' and type.primitiveType == 'char' %}
+{{ class_name }}& {{ method_name | format_method_name_get }}({{ value_type }} value) noexcept {
+    std::size_t const lengthToCopy = std::min<std::size_t>(value.size(), {{ type.length }});
+    std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), lengthToCopy);
+    for (std::size_t i = lengthToCopy; i < {{ type.length }}; ++i) {
+        *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }} + i) = {{ type.nullValue | replace_keyword }};
+    }
+    return *this;
 }
+
 {% endif %}
 
-{% if entry.presence != 'optional' %}
-[[nodiscard]] static constexpr bool {{ methodName | methodName_IS_PRESENT }}() noexcept {
+{%- if entry.presence == 'optional' %}
+{{ class_name }}& {{ method_name | format_method_name_reset }}() noexcept {
+    return {{ method_name | format_method_name_set }}({{ value_type }}());
+}
+
+{% endif %}
+
+{%- if entry.presence == 'required' or entry.presence == 'constant' %}
+[[nodiscard]] static constexpr bool {{ method_name | format_method_name_is_present }}() noexcept {
     return true;
 }
-{% else %}
-[[nodiscard]] bool {{ methodName | methodName_IS_PRESENT }}() const noexcept {
-    return {{ valueType }}::NULL_VALUE != {{ methodName | methodName_GET }}();
-}
-{% endif -%}
+{% endif %}
 
+{%- if entry.presence == 'optional' %}
+[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
+    return {{ type.nullValue | cpp }} != {{ method_name | format_method_name_get }}().front();
+}
+{% endif %}
 {% endmacro %}
 
-{# ------------------------------------------------------------- #}
-
-{% macro generate_Set(className, entry) %}
+{% macro generate_composite(class_name, entry) %}
 
 {%- if entry.token == 'field' %}
-    {% set type = entry.type %}
-{% else %}
-    {% set type = entry %}
+    {% set type = entry.type -%}
+{%- else %}
+    {% set type = entry -%}
 {%- endif %}
+{%- set composite_class_name = type.name | format_class_name -%}
+{%- set method_name = entry.name -%}
+{%- set composite_first_entry_method_name = type.containedTypes[0].name -%}
 
-{%- set methodName = entry.name %}
-{%- set underlyingType = type.encodingType | cpp %}
-{%- set valueType = underlyingType -%}
-
-[[nodiscard]] {{ valueType }} {{ methodName | methodName_GET_RAW }}() const noexcept {
-    return {{ valueType }}(*std::bit_cast<{{ underlyingType }} const*>(buffer_ + offset_ + {{ entry.offset }}));
+[[nodiscard]] {{ composite_class_name }} {{ method_name | format_method_name_get }}() {
+    return {{ composite_class_name }}(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_);
 }
 
-{{ className }}& {{ methodName | methodName_SET_RAW }}({{ valueType }} value) noexcept {
-    *std::bit_cast<{{ valueType }}*>(buffer_ + offset_ + {{ entry.offset }}) = static_cast<{{ underlyingType }}>(value);
-    return *this;
-}
-
-[[nodiscard]] static constexpr bool {{ methodName | methodName_IS_PRESENT }}() noexcept {
-    return true;
+[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() {
+    return {{ method_name | format_method_name_get }}().{{ composite_first_entry_method_name | format_method_name_is_present }}();
 }
 {% endmacro %}
 
+{% macro generate_enum(class_name, entry) %}
+{%- if entry.token == 'field' %}
+    {%- set type = entry.type -%}
+{%- else %}
+    {%- set type = entry -%}
+{%- endif %}
+{%- if entry.valueRef != None %}
+    {%- set const_value = entry.valueRef -%}
+{%- else %}
+    {%- set const_value = type.const_value -%}
+{%- endif %}
+{%- set enum_class_name = type.name | format_class_name -%}
+{%- set method_name = entry.name -%}
+{%- set underlying_type = type.encodingType | cpp -%}
+
+{%- if entry.presence == 'constant' %}
+[[nodiscard]] static constexpr {{ enum_class_name }} {{ method_name | format_method_name_get }}() noexcept {
+    return {{ enum_class_name }}::{{ const_value.split('.')[1] }};
+}
+
+{% endif %}
+
+{%- if entry.presence == 'required' or entry.presence == 'optional' %}
+[[nodiscard]] {{ enum_class_name }} {{ method_name | format_method_name_get }}() const noexcept {
+    return {{ enum_class_name }}(*std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }}));
+}
+
+{% endif %}
+
+{%- if entry.presence != 'constant' %}
+{{ class_name }}& {{ method_name | format_method_name_get }}({{ enum_class_name }} value) noexcept {
+    *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }}) = static_cast<{{ underlying_type }}>(value);
+    return *this;
+}
+
+{% endif %}
+
+{%- if entry.presence == 'optional' %}
+{{ class_name }}& {{ method_name | format_method_name_reset }}() noexcept {
+    return {{ method_name | format_method_name_set }}({{ enum_class_name }}::NULL_VALUE);
+}
+
+{% endif %}
+
+{%- if entry.presence == 'required' or entry.presence == 'constant' %}
+[[nodiscard]] static constexpr bool {{ method_name | format_method_name_is_present }}() noexcept {
+    return true;
+}
+{% endif %}
+
+{%- if entry.presence == 'optional' %}
+[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
+    return {{ enum_class_name }}::NULL_VALUE != {{ method_name | format_method_name_get }}();
+}
+{% endif %}
+{% endmacro %}
+
+{% macro generate_set(class_name, entry) %}
+{%- if entry.token == 'field' %}
+    {% set type = entry.type -%}
+{%- else %}
+    {% set type = entry -%}
+{%- endif %}
+{%- set set_class_name = entry.name | format_class_name -%}
+{%- set method_name = entry.name -%}
+
+[[nodiscard]] {{ set_class_name }} {{ method_name | format_method_name_get }}() {
+    return {{ set_class_name }}(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_);
+}
+{% endmacro %}
+
+{% macro generate_group(class_name, entry) %}
+{% endmacro %}
+
+{% macro generate_data(class_name, entry) %}
+{% endmacro %}
+
 {# ------------------------------------------------------------- #}
+
 
 {% macro generate_Group(className, entry) %}
 // group {{ entry.name }}

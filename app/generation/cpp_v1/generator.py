@@ -105,6 +105,7 @@ class Generator(GeneratorBase):
         self.env.filters['format_method_name_is_present'] = lambda value: 'is' + value[0].upper() + value[1:] + 'Present'
         self.env.filters['format_method_name_get_raw'] = lambda value: value[0].lower() + value[1:] + 'Raw'
         self.env.filters['format_method_name_set_raw'] = lambda value: value[0].lower() + value[1:] + 'Raw'
+        self.env.filters['format_method_name_reset'] = lambda value: value[0].lower() + value[1:] + 'Reset'
         self.env.filters['replace_keyword']  = Generator.filterReplaceKeword
 
     @staticmethod

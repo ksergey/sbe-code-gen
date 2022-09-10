@@ -1,20 +1,6 @@
 {% extends 'document.tmpl' %}
 
 {% block content %}
-/// @brief Set {{ type.name }}
-{% if type.description %}
-/// {{ type.description }}
-{% endif %}
-enum class {{ type.name | className }} : {{ type.encodingType | cpp }} {
-{% for entry in type.choices %}
-    {% if entry.description != None %}
-    /// {{ entry.description }}
-    {% endif %}
-    {{ entry.name }} = (1 << {{ entry.value }}){% if loop.nextitem is defined %},{% endif +%}
-{% endfor %}
-};
-
-namespace v2 {
 
 {% set type_class_name = type.name | format_class_name %}
 {% set underlying_type = type.encodingType | replace_keyword %}
@@ -107,12 +93,10 @@ public:
 
     {{ type_class_name }}& {{ choice.name | format_method_name_set }}(bool value) noexcept {
         constexpr auto bit = {{ underlying_type }}(1 << {{ choice.value }});
-        return rawValue(value ? (rawValue() | bit) : (rawValue() & ~bit);
+        return rawValue(value ? (rawValue() | bit) : (rawValue() & ~bit));
     }
 
 {% endfor %}
 };
-
-} // namespace v2
 
 {% endblock -%}
