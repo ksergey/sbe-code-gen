@@ -40,7 +40,7 @@ class Generator(GeneratorBase):
         self.generateDocument(documentName, 'schema.tmpl', includes = self.generateIncludes(schema))
 
     def makeDocumentName(self, name: str) -> str:
-        return self.env.filters['className'](name) + '.h'
+        return self.env.filters['format_class_name'](name) + '.h'
 
     def generateDocument(self, documentName: str, templateName: str, **kwargs) -> None:
         template = self.env.get_template(templateName)
@@ -87,18 +87,6 @@ class Generator(GeneratorBase):
             os.makedirs(self.path)
 
     def addFilters(self) -> None:
-        self.env.filters['className'] = lambda value: value[0].upper() + value[1:]
-        self.env.filters['methodName_GET'] = lambda value: value[0].lower() + value[1:]
-        self.env.filters['methodName_GET_RAW'] = lambda value: value[0].lower() + value[1:] + 'Raw'
-        self.env.filters['methodName_GET_COUNT'] = lambda value: value[0].lower() + value[1:] + 'Count'
-        self.env.filters['methodName_SET'] = lambda value: value[0].lower() + value[1:]
-        self.env.filters['methodName_SET_RAW'] = lambda value: value[0].lower() + value[1:] + 'Raw'
-        self.env.filters['methodName_IS_PRESENT'] = lambda value: 'is' + value[0].upper() + value[1:] + 'Present'
-        self.env.filters['methodName_RESET'] = lambda value: value[0].lower() + value[1:] + 'Reset'
-        ''' convert a keyword to native type or value '''
-        self.env.filters['cpp']  = Generator.filterReplaceKeword
-
-
         self.env.filters['format_class_name'] = lambda value: value[0].upper() + value[1:]
         self.env.filters['format_method_name_get'] = lambda value: value[0].lower() + value[1:]
         self.env.filters['format_method_name_set'] = lambda value: value[0].lower() + value[1:]
@@ -107,6 +95,7 @@ class Generator(GeneratorBase):
         self.env.filters['format_method_name_set_raw'] = lambda value: value[0].lower() + value[1:] + 'Raw'
         self.env.filters['format_method_name_reset'] = lambda value: value[0].lower() + value[1:] + 'Reset'
         self.env.filters['format_method_name_length'] = lambda value: value[0].lower() + value[1:] + 'Length'
+        self.env.filters['format_method_name_get_count'] = lambda value: value[0].lower() + value[1:] + 'Count'
         self.env.filters['replace_keyword']  = Generator.filterReplaceKeword
 
     @staticmethod

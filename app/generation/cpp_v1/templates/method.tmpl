@@ -46,7 +46,7 @@
     {% set type = entry -%}
 {%- endif %}
 {%- set method_name = entry.name -%}
-{%- set underlying_type = type.primitiveType | cpp -%}
+{%- set underlying_type = type.primitiveType | replace_keyword -%}
 
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ underlying_type }} {{ method_name | format_method_name_get }}() noexcept {
@@ -56,7 +56,8 @@
     return {{ type.constValue }};
     {% endif %}
 }
-{%- endif %}
+
+{% endif %}
 
 {%- if entry.presence == 'required' or entry.presence == 'optional' %}
 [[nodiscard]] {{ underlying_type }} {{ method_name | format_method_name_get }}() const noexcept {
@@ -75,7 +76,7 @@
 
 {%- if entry.presence == 'optional' %}
 {{ class_name }}& {{ method_name | format_method_name_reset }}() noexcept {
-    return {{ method_name | format_method_name_set }}({{ type.nullValue | cpp}});
+    return {{ method_name | format_method_name_set }}({{ type.nullValue | replace_keyword }});
 }
 
 {% endif %}
@@ -88,7 +89,7 @@
 
 {%- if entry.presence == 'optional' %}
 [[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    return {{ type.nullValue | cpp }} != {{ method_name | format_method_name_get }}();
+    return {{ type.nullValue | replace_keyword }} != {{ method_name | format_method_name_get }}();
 }
 {% endif %}
 {% endmacro %}
@@ -101,7 +102,7 @@
     {%- set type = entry -%}
 {%- endif %}
 {%- set method_name = entry.name -%}
-{%- set underlying_type = type.primitiveType | cpp -%}
+{%- set underlying_type = type.primitiveType | replace_keyword -%}
 {%- if type.primitiveType == 'char' %}
     {% set value_type = 'std::string_view' -%}
 {%- else %}
@@ -165,7 +166,7 @@
 
 {%- if entry.presence == 'optional' %}
 [[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    return {{ type.nullValue | cpp }} != {{ method_name | format_method_name_get }}().front();
+    return {{ type.nullValue | replace_keyword }} != {{ method_name | format_method_name_get }}().front();
 }
 {% endif %}
 {% endmacro %}
@@ -203,7 +204,7 @@
 {%- endif %}
 {%- set enum_class_name = type.name | format_class_name -%}
 {%- set method_name = entry.name -%}
-{%- set underlying_type = type.encodingType | cpp -%}
+{%- set underlying_type = type.encodingType | replace_keyword -%}
 
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ enum_class_name }} {{ method_name | format_method_name_get }}() noexcept {
@@ -262,16 +263,134 @@
 {% endmacro %}
 
 {% macro generate_group(class_name, entry) %}
+{%- set group_class_name = entry.name | format_class_name -%}
+{%- set dimensions_type_class_name = entry.dimensionType.name | format_class_name -%}
+{%- set method_name = entry.name -%}
+{%- set num_in_group_type = (entry.dimensionType.containedTypes | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+
+class {{ group_class_name }} final {
+private:
+    char* buffer_ = nullptr;
+    std::size_t bufferLength_ = 0;
+    std::size_t initialPosition_ = 0;
+    std::size_t* positionPtr_ = nullptr;
+    std::size_t blockLength_ = 0;
+    std::size_t count_ = 0;
+    std::size_t index_ = 0;
+    std::size_t offset_ = 0;
+    std::uint16_t actingVersion_ = 0;
+
+public:
+    {{ group_class_name }}(char* buffer, std::size_t* pos, std::uint16_t actingVersion,
+            std::size_t bufferLength)
+    {
+        {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
+        buffer_ = buffer;
+        bufferLength_ = bufferLength;
+        blockLength_ = dimensions.blockLength();
+        count_ = dimensions.numInGroup();
+        index_ = 0;
+        actingVersion_ = actingVersion;
+        initialPosition_ = *pos;
+        positionPtr_ = pos;
+        *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
+    }
+
+    {{ group_class_name }}(char* buffer, std::size_t count, std::size_t* pos, std::uint16_t actingVersion,
+            std::size_t bufferLength)
+    {
+        if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
+            throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
+        }
+
+        buffer_ = buffer;
+        bufferLength_ = bufferLength;
+        {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
+        dimensions.blockLength(sbeBlockLength());
+        dimensions.numInGroup(count);
+        index_ = 0;
+        count_ = count;
+        blockLength_ = sbeBlockLength();
+        actingVersion_ = actingVersion;
+        initialPosition_ = *pos;
+        positionPtr_ = pos;
+        *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
+    }
+
+    [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
+        return {{ entry.blockLength }};
+    }
+
+    [[nodiscard]] std::size_t sbePosition() const noexcept {
+        return *positionPtr_;
+    }
+
+    std::size_t sbeCheckPosition(std::size_t position) {
+        if (position > bufferLength_) [[unlikely]] {
+            throw std::runtime_error("buffer too short [E100]");
+        }
+        return position;
+    }
+
+    void sbePosition(std::size_t position) {
+        *positionPtr_ = sbeCheckPosition(position);
+    }
+
+    [[nodiscard]] std::size_t count() const noexcept {
+        return count_;
+    }
+
+    [[nodiscard]] bool hasNext() const noexcept {
+        return index_ < count_;
+    }
+
+    {{ group_class_name }} &next() {
+        if (index_ >= count_) {
+            throw std::runtime_error("index >= count [E108]");
+        }
+        offset_ = *positionPtr_;
+        if ((offset_ + blockLength_) > bufferLength_) [[unlikely]] {
+            throw std::runtime_error("buffer too short for next group index [E108]");
+        }
+        *positionPtr_ = offset_ + blockLength_;
+        ++index_;
+        return *this;
+    }
+
+    std::size_t resetCountToIndex() {
+        count_ = index_;
+        {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
+        dimensions.numInGroup(count_);
+        return count_;
+    }
+
+{% for group_entry in entry.fields %}
+    {{ generate(group_class_name, group_entry) | indent }}
+{% endfor -%}
+
+private:
+    [[nodiscard]] std::size_t *sbePositionPtr() noexcept {
+        return positionPtr_;
+    }
+};
+
+[[nodiscard]] {{ group_class_name }} {{ method_name | format_method_name_get }}() {
+    return {{ group_class_name }}(buffer_, sbePositionPtr(), actingVersion_, bufferLength_);
+}
+
+[[nodiscard]] {{ group_class_name }} {{ method_name | format_method_name_get_count }}(std::size_t count) {
+    return {{ group_class_name }}(buffer_, count, sbePositionPtr(), actingVersion_, bufferLength_);
+}
+
 {% endmacro %}
 
 {% macro generate_data(class_name, entry) %}
-
 {%- set type = entry.type -%}
 {%- set length_type = (type.containedTypes | selectattr('name', 'equalto', 'length') | first) -%}
 {%- set var_data_type = (type.containedTypes | selectattr('name', 'equalto', 'varData') | first) -%}
 {%- set method_name = entry.name -%}
-{%- set length_underlying_type = length_type.primitiveType | cpp -%}
-{%- set data_underlying_type = var_data_type.primitiveType | cpp -%}
+{%- set length_underlying_type = length_type.primitiveType | replace_keyword -%}
+{%- set data_underlying_type = var_data_type.primitiveType | replace_keyword -%}
 {%- if var_data_type.primitiveType == 'char' %}
     {% set value_type = 'std::string_view' -%}
 {%- else %}
@@ -302,163 +421,4 @@
     return *this;
 }
 
-{% endmacro %}
-
-{# ------------------------------------------------------------- #}
-
-
-{% macro generate_Group(className, entry) %}
-// group {{ entry.name }}
-class {{ entry.name | className }} final {
-private:
-    char* buffer_ = nullptr;
-    std::size_t bufferLength_ = 0;
-    std::size_t initialPosition_ = 0;
-    std::size_t* positionPtr_ = nullptr;
-    std::size_t blockLength_ = 0;
-    std::size_t count_ = 0;
-    std::size_t index_ = 0;
-    std::size_t offset_ = 0;
-    std::uint16_t actingVersion_ = 0;
-
-public:
-    {{ entry.name | className}}& wrapForDecode(char* buffer, std::size_t* pos, std::uint16_t actingVersion, std::size_t bufferLength) {
-        {{ entry.dimensionType.name | className }} dimension(buffer, *pos, bufferLength, actingVersion);
-        buffer_ = buffer;
-        bufferLength_ = bufferLength;
-        blockLength_ = dimension.blockLength();
-        count_ = dimension.numInGroup();
-        index_ = 0;
-        actingVersion_ = actingVersion;
-        initialPosition_ = *pos;
-        positionPtr_ = pos;
-        *positionPtr_ += {{ entry.dimensionType.name }}::encodedLength();
-        return *this;
-    }
-
-    {{ entry.name | className }}& wrapForEncode(char* buffer, std::size_t count, std::size_t* pos, std::uint16_t actingVersion,
-            std::size_t bufferLength) {
-        buffer_ = buffer;
-        bufferLength_ = bufferLength;
-        {{ entry.dimensionType.name | className }}(buffer, *pos, bufferLength, actingVersion)
-            .blockLength(sbeBlockLength())
-            .numInGroup(count)
-        ;
-        index_ = 0;
-        count_ = count;
-        blockLength_ = {{ entry.blockLength }};
-        actingVersion_ = actingVersion;
-        initialPosition_ = *pos;
-        positionPtr_ = pos;
-        *positionPtr_ += {{ entry.dimensionType.name }}::encodedLength();
-        return *this;
-    }
-
-    [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
-        return {{ entry.blockLength }};
-    }
-
-    [[nodiscard]] std::size_t sbePosition() const noexcept {
-        return *positionPtr_;
-    }
-
-    void sbePosition(std::size_t value) {
-        *positionPtr_ = sbeCheckPosition(value);
-    }
-
-    std::size_t sbeCheckPosition(std::size_t position) {
-        if (position > bufferLength_) [[unlikely]] {
-            throw std::runtime_error("buffer too short ({{ entry.name | className }}) [E100]");
-        }
-        return position;
-    }
-
-    [[nodiscard]] std::size_t count() const noexcept {
-        return count_;
-    }
-
-    [[nodiscard]] bool hasNext() const noexcept {
-        return index_ < count_;
-    }
-
-    {{ entry.name | className }}& next() {
-        if (index_ >= count_) [[unlikely]] {
-            throw std::runtime_error("index >= count in group {{ entry.name | className }} [E108]");
-        }
-        offset_ = *positionPtr_;
-        if ((offset_ + blockLength_) > bufferLength_) [[unlikely]] {
-            throw std::runtime_error("buffer too short for next group index ({{ entry.name | className }}) [E108]");
-        }
-        *positionPtr_ = offset_ + blockLength_;
-        ++index_;
-        return *this;
-    }
-
-{% for field in entry.fields %}
-    {{ generate(entry.name | className, field) | indent }}
-{% endfor -%}
-
-private:
-    std::size_t* positionPtr() noexcept {
-        return positionPtr_;
-    }
-};
-
-{{ entry.name | className }} {{ entry.name | methodName_GET }}() {
-    {{ entry.name | className }} group;
-    group.wrapForDecode(buffer_, positionPtr(), actingVersion_, bufferLength_);
-    return group;
-}
-
-{{ entry.name | className }} {{ entry.name | methodName_GET_COUNT }}(std::size_t count) {
-    {{ entry.name | className }} group;
-    group.wrapForEncode(buffer_, count, positionPtr(), actingVersion_, bufferLength_);
-    return group;
-}
-{% endmacro %}
-
-{# ------------------------------------------------------------- #}
-
-{% macro generate_Data(className, entry) %}
-
-{%- set methodName = entry.name %}
-{%- set lengthType = (entry.type.containedTypes | selectattr('name', 'equalto', 'length') | first) %}
-{%- set varDataType = (entry.type.containedTypes | selectattr('name', 'equalto', 'varData') | first) %}
-
-{%- if varDataType.primitiveType == 'char' or varDataType.primitiveType == 'uint8' %}
-    {% set typeName = 'char' | cpp %}
-{%- else %}
-    {% set typeName = varDataType.primitiveType | cpp %}
-{%- endif %}
-
-{%- if varDataType.primitiveType == 'char' or varDataType.primitiveType == 'uint8' %}
-    {% set valueType = 'std::string_view' %}
-{%- else %}
-    {% set valueType = 'std::span<' ~ typeName ~ ' const>' %}
-{%- endif -%}
-
-[[nodiscard]] {{ valueType }} {{ methodName | methodName_GET }}() noexcept {
-    auto const length = *std::bit_cast<{{ lengthType.primitiveType | cpp }} const*>(buffer_ + sbePosition());
-    auto const begin = std::bit_cast<{{ typeName }} const*>(buffer_ + sbePosition() + sizeof(length));
-    sbePosition(sbePosition() + sizeof(length) + length);
-    return {{ valueType }}(begin, length);
-}
-
-[[nodiscard]] bool {{ methodName | methodName_IS_PRESENT }}() const noexcept {
-    auto const length = *std::bit_cast<{{ lengthType.primitiveType | cpp }} const*>(buffer_ + sbePosition());
-    return length > 0;
-}
-
-{{ className }}& {{ methodName | methodName_SET}}({{valueType}} value) {
-    auto const lengthPosition = sbePosition();
-    sbePosition(lengthPosition + sizeof({{ lengthType.primitiveType | cpp }}));
-    *std::bit_cast<{{ lengthType.primitiveType | cpp }}*>(buffer_ + lengthPosition) = value.size();
-    if (value.size() > 0) [[likely]] {
-        auto const pos = sbePosition();
-        auto const size = value.size() * sizeof({{ typeName }});
-        sbePosition(pos + size);
-        std::memcpy(buffer_ + pos, value.data(), size);
-    }
-    return *this;
-}
 {% endmacro %}

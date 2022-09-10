@@ -1,45 +1,9 @@
 {% extends 'document.tmpl' %}
 
 {% block content %}
-/// @brief Enum {{ type.name }}
-{% if type.description %}
-/// {{ type.description }}
-{% endif %}
-enum class {{ type.name | className }} : {{ type.encodingType | cpp }} {
-{% for entry in type.validValues %}
-    {% if entry.description != None %}
-    /// {{ entry.description }}
-    {% endif %}
-    {% if type.encodingType == 'char' %}
-    {{ entry.name }} = '{{ entry.value }}',
-    {% else %}
-    {{ entry.name }} = {{ entry.value }},
-    {% endif %}
-{% endfor %}
-    NULL_VALUE = {{ type.nullValue | cpp }}
-};
 
-[[nodiscard]] constexpr std::string_view toString({{ type.name | className }} value) noexcept {
-    using namespace std::string_view_literals;
-
-    switch (value) {
-{% for entry in type.validValues %}
-    case {{type.name | className}}::{{ entry.name }}:
-        return "{{ entry.name }}"sv;
-{% endfor %}
-    case {{ type.name }}::NULL_VALUE:
-        return "null"sv;
-    default:
-        break;
-    }
-
-    return ""sv;
-}
-
-namespace v2 {
-
-{% set type_class_name = type.name | format_class_name %}
-{% set underlying_type = type.encodingType | replace_keyword %}
+{%- set type_class_name = type.name | format_class_name -%}
+{%- set underlying_type = type.encodingType | replace_keyword -%}
 
 enum class {{ type_class_name }} : {{ underlying_type }} {
 {% for validValue in type.validValues %}
@@ -51,7 +15,5 @@ enum class {{ type_class_name }} : {{ underlying_type }} {
 {% endfor %}
     NULL_VALUE = {{ type.nullValue | replace_keyword }}
 };
-
-} // namespace v2
 
 {% endblock %}
