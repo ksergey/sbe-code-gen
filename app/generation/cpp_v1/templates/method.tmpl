@@ -127,7 +127,7 @@
 {% endif %}
 
 {%- if entry.presence != 'constant' and type.primitiveType != 'char' %}
-{{ class_name }}& {{ method_name | format_method_name_get }}({{ value_type }} value) noexcept {
+{{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
     if (value.size() != {{ type.length }}) [[unlikely]] {
         # TODO
         throw std::runtime_error("...");
@@ -139,7 +139,7 @@
 {% endif %}
 
 {%- if entry.presence != 'constant' and type.primitiveType == 'char' %}
-{{ class_name }}& {{ method_name | format_method_name_get }}({{ value_type }} value) noexcept {
+{{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
     std::size_t const lengthToCopy = std::min<std::size_t>(value.size(), {{ type.length }});
     std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), lengthToCopy);
     for (std::size_t i = lengthToCopy; i < {{ type.length }}; ++i) {
@@ -265,6 +265,43 @@
 {% endmacro %}
 
 {% macro generate_data(class_name, entry) %}
+
+{%- set type = entry.type -%}
+{%- set length_type = (type.containedTypes | selectattr('name', 'equalto', 'length') | first) -%}
+{%- set var_data_type = (type.containedTypes | selectattr('name', 'equalto', 'varData') | first) -%}
+{%- set method_name = entry.name -%}
+{%- set length_underlying_type = length_type.primitiveType | cpp -%}
+{%- set data_underlying_type = var_data_type.primitiveType | cpp -%}
+{%- if var_data_type.primitiveType == 'char' %}
+    {% set value_type = 'std::string_view' -%}
+{%- else %}
+    {% set value_type = 'std::span<' ~ data_underlying_type ~ ' const>' -%}
+{%- endif %}
+
+[[nodiscard]] std::size_t {{ method_name | format_method_name_length }}() const noexcept {
+    return *std::bit_cast<{{ length_underlying_type }} const*>(buffer_ + sbePosition());
+}
+
+[[nodiscard]] {{ value_type }} {{ method_name | format_method_name_get }}() noexcept {
+    {{ length_underlying_type }} const length = *std::bit_cast<{{ length_underlying_type }} const*>(buffer_ + sbePosition());
+    {{ data_underlying_type }} const* begin = std::bit_cast<{{ data_underlying_type }} const*>(buffer_ + sbePosition() + sizeof(length));
+    sbePosition(sbePosition() + sizeof(length) + length);
+    return {{ value_type }}(begin, length);
+}
+
+{{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
+    auto const lengthPosition = sbePosition();
+    sbePosition(lengthPosition + sizeof({{ length_underlying_type }}));
+    *std::bit_cast<{{ length_underlying_type }}*>(buffer_ + lengthPosition) = value.size();
+    if (value.size() > 0) [[likely]] {
+        auto const pos = sbePosition();
+        auto const size = value.size() * sizeof({{ data_underlying_type }});
+        sbePosition(pos + size);
+        std::memcpy(buffer_ + pos, value.data(), size);
+    }
+    return *this;
+}
+
 {% endmacro %}
 
 {# ------------------------------------------------------------- #}

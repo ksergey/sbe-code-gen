@@ -2,8 +2,8 @@
 
 {% block content %}
 
-{% set type_class_name = type.name | format_class_name %}
-{% set underlying_type = type.encodingType | replace_keyword %}
+{%- set type_class_name = type.name | format_class_name -%}
+{%- set underlying_type = type.encodingType | replace_keyword -%}
 
 class {{ type_class_name }} final {
 private:
