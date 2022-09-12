@@ -1,30 +1,30 @@
-{% macro generate(class_name, entry) %}
+{% macro define_property(class_name, entry) %}
 {%- if entry.token == 'type' %}
-    {{- generate_type(class_name, entry) }}
+    {{- define_property_type(class_name, entry) }}
 {%- elif entry.token == 'composite' %}
-    {{- generate_composite(class_name, entry) }}
+    {{- define_property_composite(class_name, entry) }}
 {%- elif entry.token == 'enum' %}
-    {{- generate_enum(class_name, entry) }}
+    {{- define_property_enum(class_name, entry) }}
 {%- elif entry.token == 'set' %}
-    {{- generate_set(class_name, entry) }}
+    {{- define_property_set(class_name, entry) }}
 {%- elif entry.token == 'field' %}
     {%- if entry.type.token == 'type' %}
-        {{- generate_type(class_name, entry) }}
+        {{- define_property_type(class_name, entry) }}
     {%- elif entry.type.token == 'composite' %}
-        {{- generate_composite(class_name, entry) }}
+        {{- define_property_composite(class_name, entry) }}
     {%- elif entry.type.token == 'enum' %}
-        {{- generate_enum(class_name, entry) }}
+        {{- define_property_enum(class_name, entry) }}
     {%- elif entry.type.token == 'set' %}
-        {{- generate_set(class_name, entry) }}
+        {{- define_property_set(class_name, entry) }}
     {%- endif %}
 {%- elif entry.token == 'group' %}
-    {{- generate_group(class_name, entry) }}
+    {{- define_property_group(class_name, entry) }}
 {%- elif entry.token == 'data' %}
-    {{- generate_data(class_name, entry) }}
+    {{- define_property_data(class_name, entry) }}
 {%- endif %}
 {% endmacro %}
 
-{% macro generate_type(class_name, entry) -%}
+{% macro define_property_type(class_name, entry) -%}
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
 {%- else %}
@@ -32,13 +32,13 @@
 {%- endif %}
 
 {%- if type.length == 1 %}
-    {{- generate_type_single(class_name, entry) }}
+    {{- define_property_type_single(class_name, entry) }}
 {%- elif type.length > 1 %}
-    {{- generate_type_array(class_name, entry) }}
+    {{- define_property_type_array(class_name, entry) }}
 {%- endif %}
 {%- endmacro %}
 
-{% macro generate_type_single(class_name, entry) %}
+{% macro define_property_type_single(class_name, entry) %}
 
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
@@ -89,12 +89,15 @@
 
 {%- if entry.presence == 'optional' %}
 [[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
+    {% if type.primitiveType == 'double' or type.primitiveType == 'float' %}
+    // TODO: for double need too check NaN condition
+    {% endif %}
     return {{ type.nullValue | replace_keyword }} != {{ method_name | format_method_name_get }}();
 }
 {% endif %}
 {% endmacro %}
 
-{% macro generate_type_array(class_name, entry) %}
+{% macro define_property_type_array(class_name, entry) %}
 
 {%- if entry.token == 'field' %}
     {%- set type = entry.type -%}
@@ -171,7 +174,7 @@
 {% endif %}
 {% endmacro %}
 
-{% macro generate_composite(class_name, entry) %}
+{% macro define_property_composite(class_name, entry) %}
 
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
@@ -191,7 +194,7 @@
 }
 {% endmacro %}
 
-{% macro generate_enum(class_name, entry) %}
+{% macro define_property_enum(class_name, entry) %}
 {%- if entry.token == 'field' %}
     {%- set type = entry.type -%}
 {%- else %}
@@ -248,7 +251,7 @@
 {% endif %}
 {% endmacro %}
 
-{% macro generate_set(class_name, entry) %}
+{% macro define_property_set(class_name, entry) %}
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
 {%- else %}
@@ -262,7 +265,7 @@
 }
 {% endmacro %}
 
-{% macro generate_group(class_name, entry) %}
+{% macro define_property_group(class_name, entry) %}
 {%- set group_class_name = entry.name | format_class_name -%}
 {%- set dimensions_type_class_name = entry.dimensionType.name | format_class_name -%}
 {%- set method_name = entry.name -%}
@@ -365,7 +368,7 @@ public:
     }
 
 {% for group_entry in entry.fields %}
-    {{ generate(group_class_name, group_entry) | indent }}
+    {{ define_property(group_class_name, group_entry) | indent }}
 {% endfor -%}
 
 private:
@@ -384,7 +387,7 @@ private:
 
 {% endmacro %}
 
-{% macro generate_data(class_name, entry) %}
+{% macro define_property_data(class_name, entry) %}
 {%- set type = entry.type -%}
 {%- set length_type = (type.containedTypes | selectattr('name', 'equalto', 'length') | first) -%}
 {%- set var_data_type = (type.containedTypes | selectattr('name', 'equalto', 'varData') | first) -%}
@@ -421,4 +424,78 @@ private:
     return *this;
 }
 
+{% endmacro %}
+
+{% macro define_visitor(var_name, entry) %}
+// {{ var_name }} {{ entry.name }} visitor
+{%- if entry.token == 'type' %}
+    {{- define_visitor_type(var_name, entry) }}
+{%- elif entry.token == 'composite' %}
+    {{- define_visitor_composite(var_name, entry) }}
+{%- elif entry.token == 'enum' %}
+    {{- define_visitor_enum(var_name, entry) }}
+{%- elif entry.token == 'set' %}
+    {{- define_visitor_set(var_name, entry) }}
+{%- elif entry.token == 'field' %}
+    {%- if entry.type.token == 'type' %}
+        {{- define_visitor_type(var_name, entry) }}
+    {%- elif entry.type.token == 'composite' %}
+        {{- define_visitor_composite(var_name, entry) }}
+    {%- elif entry.type.token == 'enum' %}
+        {{- define_visitor_enum(var_name, entry) }}
+    {%- elif entry.type.token == 'set' %}
+        {{- define_visitor_set(var_name, entry) }}
+    {%- endif %}
+{%- elif entry.token == 'group' %}
+    {{- define_visitor_group(var_name, entry) }}
+{%- elif entry.token == 'data' %}
+    {{- define_visitor_data(var_name, entry) }}
+{%- endif %}
+{% endmacro %}
+
+{% macro define_visitor_type(var_name, entry) %}
+
+{%- if entry.token == 'field' %}
+    {% set type = entry.type -%}
+{%- else %}
+    {% set type = entry -%}
+{%- endif %}
+{%- set method_name = entry.name -%}
+
+{% endmacro %}
+
+{% macro define_visitor_composite(var_name, entry) %}
+
+{%- if entry.token == 'field' %}
+    {% set type = entry.type -%}
+{%- else %}
+    {% set type = entry -%}
+{%- endif %}
+
+{% endmacro %}
+
+{% macro define_visitor_enum(var_name, entry) %}
+
+{%- if entry.token == 'field' %}
+    {% set type = entry.type -%}
+{%- else %}
+    {% set type = entry -%}
+{%- endif %}
+
+{% endmacro %}
+
+{% macro define_visitor_set(var_name, entry) %}
+
+{%- if entry.token == 'field' %}
+    {% set type = entry.type -%}
+{%- else %}
+    {% set type = entry -%}
+{%- endif %}
+
+{% endmacro %}
+
+{% macro define_visitor_group(var_name, entry) %}
+{% endmacro %}
+
+{% macro define_visitor_data(var_name, entry) %}
 {% endmacro %}

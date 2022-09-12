@@ -74,7 +74,7 @@ public:
     }
 
 {%- for containedType in type.containedTypes %}
-    {{ method.generate(type_class_name, containedType) | indent }}
+    {{ method.define_property(type_class_name, containedType) | indent }}
 {%- endfor %}
 };
 

@@ -122,7 +122,7 @@ public:
     }
 
 {% for entry in message.fields %}
-    {{ method.generate(message_class_name, entry) | indent }}
+    {{ method.define_property(message_class_name, entry) | indent }}
 {% endfor -%}
 
 private:
@@ -130,5 +130,13 @@ private:
         return &position_;
     }
 };
+
+template<class Handler>
+void visit({{ message_class_name }} msg, Handler handler) {
+    // TODO
+{% for entry in message.fields %}
+    {{ method.define_visitor('msg', entry) | indent }}
+{% endfor -%}
+}
 
 {% endblock %}
