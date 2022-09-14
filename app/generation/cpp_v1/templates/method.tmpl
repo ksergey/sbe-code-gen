@@ -394,10 +394,12 @@ private:
 {%- set method_name = entry.name -%}
 {%- set length_underlying_type = length_type.primitiveType | replace_keyword -%}
 {%- set data_underlying_type = var_data_type.primitiveType | replace_keyword -%}
-{%- if var_data_type.primitiveType == 'char' %}
-    {% set value_type = 'std::string_view' -%}
+
+{%- if var_data_type.primitiveType == 'char' or var_data_type.primitiveType == 'uint8' %}
+    {%- set data_underlying_type = 'char' -%}
+    {%- set value_type = 'std::string_view' -%}
 {%- else %}
-    {% set value_type = 'std::span<' ~ data_underlying_type ~ ' const>' -%}
+    {%- set value_type = 'std::span<' ~ data_underlying_type ~ ' const>' -%}
 {%- endif %}
 
 [[nodiscard]] std::size_t {{ method_name | format_method_name_length }}() const noexcept {
