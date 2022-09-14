@@ -90,9 +90,12 @@
 {%- if entry.presence == 'optional' %}
 [[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
     {% if type.primitiveType == 'double' or type.primitiveType == 'float' %}
-    // TODO: for double need too check NaN condition
-    {% endif %}
+    constexpr {{ underlying_type }} null = {{ type.nullValue | replace_keyword }};
+    constexpr {{ underlying_type }} value = {{ method_name | format_method_name_get() }};
+    return ((null != null && value != value) || (value != null));
+    {% else %}
     return {{ type.nullValue | replace_keyword }} != {{ method_name | format_method_name_get }}();
+    {% endif %}
 }
 {% endif %}
 {% endmacro %}
@@ -259,9 +262,15 @@
 {%- endif %}
 {%- set set_class_name = entry.name | format_class_name -%}
 {%- set method_name = entry.name -%}
+{%- set underlying_type = type.encodingType | replace_keyword -%}
 
 [[nodiscard]] {{ set_class_name }} {{ method_name | format_method_name_get }}() {
-    return {{ set_class_name }}(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_);
+    return {{ set_class_name }}(*std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }}));
+}
+
+{{ class_name }}& {{ method_name | format_method_name_get }}({{ set_class_name }} value) noexcept {
+    *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }}) = static_cast<{{ underlying_type }}>(value);
+    return *this;
 }
 {% endmacro %}
 
