@@ -45,17 +45,6 @@ public:
     constexpr {{ type_class_name }}& clear() noexcept {
         return raw(0);
     }
-
-    [[nodiscard]] static constexpr char const* toString({{ type_class_name }} value) noexcept {
-        // TODO
-        return "";
-    }
-
-    [[nodiscard]] static constexpr {{ type_class_name }} fromString(char const* value) noexcept {
-        using namespace std::string_view_literals;
-        // TODO
-        return {{ type_class_name }}();
-    }
 };
 
 {% endblock -%}
