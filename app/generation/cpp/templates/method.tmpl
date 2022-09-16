@@ -277,6 +277,10 @@
     *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }}) = static_cast<{{ underlying_type }}>(value);
     return *this;
 }
+
+[[nodiscard]] static constexpr bool {{ method_name | format_method_name_is_present }}() noexcept {
+    return true;
+}
 {% endmacro %}
 
 {% macro define_property_group(class_name, entry) %}
