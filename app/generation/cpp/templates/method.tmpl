@@ -5,27 +5,27 @@
 
 {% macro define_property(class_name, entry) %}
 {%- if entry.token == 'type' %}
-    {{- define_property_type(class_name, entry) }}
+    {{- define_property_type(class_name, entry) -}}
 {%- elif entry.token == 'composite' %}
-    {{- define_property_composite(class_name, entry) }}
+    {{- define_property_composite(class_name, entry) -}}
 {%- elif entry.token == 'enum' %}
-    {{- define_property_enum(class_name, entry) }}
+    {{- define_property_enum(class_name, entry) -}}
 {%- elif entry.token == 'set' %}
-    {{- define_property_set(class_name, entry) }}
+    {{- define_property_set(class_name, entry) -}}
 {%- elif entry.token == 'field' %}
     {%- if entry.type.token == 'type' %}
-        {{- define_property_type(class_name, entry) }}
+        {{- define_property_type(class_name, entry) -}}
     {%- elif entry.type.token == 'composite' %}
-        {{- define_property_composite(class_name, entry) }}
+        {{- define_property_composite(class_name, entry) -}}
     {%- elif entry.type.token == 'enum' %}
-        {{- define_property_enum(class_name, entry) }}
+        {{- define_property_enum(class_name, entry) -}}
     {%- elif entry.type.token == 'set' %}
-        {{- define_property_set(class_name, entry) }}
+        {{- define_property_set(class_name, entry) -}}
     {%- endif %}
 {%- elif entry.token == 'group' %}
-    {{- define_property_group(class_name, entry) }}
+    {{- define_property_group(class_name, entry) -}}
 {%- elif entry.token == 'data' %}
-    {{- define_property_data(class_name, entry) }}
+    {{- define_property_data(class_name, entry) -}}
 {%- endif %}
 {% endmacro %}
 
@@ -387,7 +387,14 @@ public:
 
 {% for group_entry in entry.fields %}
     {{ define_property(group_class_name, group_entry) | indent }}
-{% endfor -%}
+{% endfor %}
+
+    template<class Visitor>
+    void visit(Visitor&& visitor) {
+{% for group_entry in entry.fields %}
+        {{ define_visitor(group_entry) | indent }}
+{% endfor %}
+    }
 
 private:
     [[nodiscard]] std::size_t *sbePositionPtr() noexcept {
@@ -402,7 +409,6 @@ private:
 [[nodiscard]] {{ group_class_name }} {{ method_name | format_method_name_get_count }}(std::size_t count) {
     return {{ group_class_name }}(buffer_, count, sbePositionPtr(), actingVersion_, bufferLength_);
 }
-
 {% endmacro %}
 
 {% macro define_property_data(class_name, entry) %}
@@ -446,34 +452,34 @@ private:
 
 {% endmacro %}
 
-{% macro define_visitor(var_name, entry) %}
+{% macro define_visitor(entry) %}
 // {{ var_name }} {{ entry.name }} visitor
 {%- if entry.token == 'type' %}
-    {{- define_visitor_type(var_name, entry) }}
+    {{- define_visitor_type(entry) -}}
 {%- elif entry.token == 'composite' %}
-    {{- define_visitor_composite(var_name, entry) }}
+    {{- define_visitor_composite(entry) -}}
 {%- elif entry.token == 'enum' %}
-    {{- define_visitor_enum(var_name, entry) }}
+    {{- define_visitor_enum(entry) -}}
 {%- elif entry.token == 'set' %}
-    {{- define_visitor_set(var_name, entry) }}
+    {{- define_visitor_set(entry) -}}
 {%- elif entry.token == 'field' %}
     {%- if entry.type.token == 'type' %}
-        {{- define_visitor_type(var_name, entry) }}
+        {{- define_visitor_type(entry) -}}
     {%- elif entry.type.token == 'composite' %}
-        {{- define_visitor_composite(var_name, entry) }}
+        {{- define_visitor_composite(entry) -}}
     {%- elif entry.type.token == 'enum' %}
-        {{- define_visitor_enum(var_name, entry) }}
+        {{- define_visitor_enum(entry) -}}
     {%- elif entry.type.token == 'set' %}
-        {{- define_visitor_set(var_name, entry) }}
+        {{- define_visitor_set(entry) -}}
     {%- endif %}
 {%- elif entry.token == 'group' %}
-    {{- define_visitor_group(var_name, entry) }}
+    {{- define_visitor_group(entry) -}}
 {%- elif entry.token == 'data' %}
-    {{- define_visitor_data(var_name, entry) }}
+    {{- define_visitor_data(entry) -}}
 {%- endif %}
 {% endmacro %}
 
-{% macro define_visitor_type(var_name, entry) %}
+{% macro define_visitor_type(entry) %}
 
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
@@ -484,38 +490,41 @@ private:
 
 {% endmacro %}
 
-{% macro define_visitor_composite(var_name, entry) %}
+{% macro define_visitor_composite(entry) %}
 
-{%- if entry.token == 'field' %}
-    {% set type = entry.type -%}
+{%- if entry.token == 'field' -%}
+    {%- set type = entry.type -%}
+{%- else -%}
+    {%- set type = entry -%}
+{%- endif -%}
+{%- set method_name = entry.name -%}
+
+{% endmacro %}
+
+{% macro define_visitor_enum(entry) %}
+
+{%- if entry.token == 'field' -%}
+    {%- set type = entry.type -%}
 {%- else %}
-    {% set type = entry -%}
-{%- endif %}
+    {%- set type = entry -%}
+{%- endif -%}
+{%- set method_name = entry.name -%}
 
 {% endmacro %}
 
-{% macro define_visitor_enum(var_name, entry) %}
+{% macro define_visitor_set(entry) %}
 
-{%- if entry.token == 'field' %}
-    {% set type = entry.type -%}
+{%- if entry.token == 'field' -%}
+    {%- set type = entry.type -%}
 {%- else %}
-    {% set type = entry -%}
+    {%- set type = entry -%}
 {%- endif %}
+{%- set method_name = entry.name -%}
 
 {% endmacro %}
 
-{% macro define_visitor_set(var_name, entry) %}
-
-{%- if entry.token == 'field' %}
-    {% set type = entry.type -%}
-{%- else %}
-    {% set type = entry -%}
-{%- endif %}
-
+{% macro define_visitor_group(entry) %}
 {% endmacro %}
 
-{% macro define_visitor_group(var_name, entry) %}
-{% endmacro %}
-
-{% macro define_visitor_data(var_name, entry) %}
+{% macro define_visitor_data(entry) %}
 {% endmacro %}

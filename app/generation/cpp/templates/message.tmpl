@@ -128,20 +128,19 @@ public:
 
 {% for entry in message.fields %}
     {{ method.define_property(message_class_name, entry) | indent }}
-{% endfor -%}
+{%- endfor %}
+
+    template<class Visitor>
+    void visit(Visitor&& visitor) {
+{% for entry in message.fields %}
+        {{ method.define_visitor(entry) | indent }}
+{% endfor %}
+    }
 
 private:
     std::size_t* sbePositionPtr() noexcept {
         return &position_;
     }
 };
-
-template<class Handler>
-void visit({{ message_class_name }} msg, Handler handler) {
-    // TODO
-{% for entry in message.fields %}
-    {{ method.define_visitor('msg', entry) | indent }}
-{% endfor -%}
-}
 
 {% endblock %}

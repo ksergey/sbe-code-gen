@@ -39,8 +39,8 @@ class Generator(GeneratorBase):
             self.generateDocument(documentName, 'message.tmpl', message = message, schema = schema,
                                   includes = self.generateIncludesForMessage(message, schema))
 
-        documentName = self.makeDocumentName('schema')
-        self.generateDocument(documentName, 'schema.tmpl', includes = self.generateIncludes(schema))
+        self.generateDocument('schema.h', 'schema.tmpl', schema = schema, includes = self.generateIncludes(schema))
+        self.generateDocument('visitor.h', 'visitor.tmpl', schema = schema)
 
     def makeDocumentName(self, name: str) -> str:
         return self.env.filters['format_class_name'](name) + '.h'
@@ -67,6 +67,8 @@ class Generator(GeneratorBase):
 
         if schema != None:
             includes.add(self.makeDocumentName(schema['headerType']['name']))
+
+        includes.add('visitor.h')
 
         return list(includes)
 

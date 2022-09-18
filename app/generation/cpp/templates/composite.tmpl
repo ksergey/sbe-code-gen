@@ -81,6 +81,13 @@ public:
 {%- for containedType in type.containedTypes %}
     {{ method.define_property(type_class_name, containedType) | indent }}
 {%- endfor %}
+
+    template<class Visitor>
+    void visit(Visitor&& visitor) {
+{% for containedType in type.containedTypes %}
+    {{ method.define_visitor(containedType) | indent }}
+{% endfor %}
+    }
 };
 
 {% endblock %}
