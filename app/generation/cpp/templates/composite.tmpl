@@ -78,9 +78,9 @@ public:
         return {{ schema.version }};
     }
 
-{%- for containedType in type.containedTypes %}
+{% for containedType in type.containedTypes %}
     {{ method.define_property(enum_class_name, containedType) | indent }}
-{%- endfor %}
+{% endfor %}
 };
 
 {% endblock %}
