@@ -7,10 +7,10 @@
 
 {% block content %}
 
-{%- set type_class_name = type.name | format_class_name -%}
+{%- set set_class_name = type.name | format_class_name -%}
 {%- set underlying_type = type.encodingType | replace_keyword -%}
 
-class {{ type_class_name }} final {
+class {{ set_class_name }} final {
 private:
     {{ underlying_type }} value_ = 0;
 
@@ -19,9 +19,9 @@ public:
     static constexpr auto {{ choice.name | format_constant_name }} = {{ underlying_type }}(1 << {{ choice.value }});
 {% endfor %}
 
-    constexpr {{ type_class_name }}() = default;
+    constexpr {{ set_class_name }}() = default;
 
-    constexpr {{ type_class_name }}({{ underlying_type }} value) noexcept
+    constexpr {{ set_class_name }}({{ underlying_type }} value) noexcept
         : value_(value)
     {}
 
@@ -34,7 +34,7 @@ public:
         return {{ choice.name | format_constant_name }} == (raw() & {{ choice.name | format_constant_name }});
     }
 
-    constexpr {{ type_class_name }}& {{ choice.name | format_method_name_set }}(bool value) noexcept {
+    constexpr {{ set_class_name }}& {{ choice.name | format_method_name_set }}(bool value) noexcept {
         return raw(value ? (raw() | {{ choice.name | format_constant_name }}) : (raw() & ~{{ choice.name | format_constant_name }}));
     }
 
@@ -43,11 +43,11 @@ public:
         return value_;
     }
 
-    constexpr {{ type_class_name }}& raw({{ underlying_type }} value) noexcept {
-        return *this = {{ type_class_name }}(value);
+    constexpr {{ set_class_name }}& raw({{ underlying_type }} value) noexcept {
+        return *this = {{ set_class_name }}(value);
     }
 
-    constexpr {{ type_class_name }}& clear() noexcept {
+    constexpr {{ set_class_name }}& clear() noexcept {
         return raw(0);
     }
 };
