@@ -9,9 +9,9 @@
 
 {% block content %}
 
-{%- set type_class_name = type.name | format_class_name -%}
+{%- set enum_class_name = type.name | format_class_name -%}
 
-class {{ type_class_name }} final {
+class {{ enum_class_name }} final {
 private:
     char* buffer_ = nullptr;
     std::size_t bufferLength_ = 0;
@@ -19,9 +19,9 @@ private:
     std::uint16_t actingVersion_ = 0;
 
 public:
-    {{ type_class_name }}() = default;
+    {{ enum_class_name }}() = default;
 
-    {{ type_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
+    {{ enum_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
             std::uint16_t actingVersion)
         : buffer_(buffer)
         , bufferLength_(bufferLength)
@@ -33,17 +33,17 @@ public:
         }
     }
 
-    {{ type_class_name }}(char* buffer, std::size_t bufferLength, std::uint16_t actingVersion)
-        : {{ type_class_name }}(buffer, 0, bufferLength, actingVersion)
+    {{ enum_class_name }}(char* buffer, std::size_t bufferLength, std::uint16_t actingVersion)
+        : {{ enum_class_name }}(buffer, 0, bufferLength, actingVersion)
     {}
 
-    {{ type_class_name }}(char* buffer, std::size_t bufferLength)
-        : {{ type_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion())
+    {{ enum_class_name }}(char* buffer, std::size_t bufferLength)
+        : {{ enum_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion())
     {}
 
-    {{ type_class_name }}& wrap(char* buffer, std::size_t offset, std::uint16_t actingVersion,
+    {{ enum_class_name }}& wrap(char* buffer, std::size_t offset, std::uint16_t actingVersion,
             std::size_t bufferLength) {
-        return *this = {{ type_class_name }}(buffer, offset, bufferLength, actingVersion);
+        return *this = {{ enum_class_name }}(buffer, offset, bufferLength, actingVersion);
     }
 
     [[nodiscard]] static constexpr std::size_t encodedLength() noexcept {
@@ -79,15 +79,8 @@ public:
     }
 
 {%- for containedType in type.containedTypes %}
-    {{ method.define_property(type_class_name, containedType) | indent }}
+    {{ method.define_property(enum_class_name, containedType) | indent }}
 {%- endfor %}
-
-    template<class Visitor>
-    void visit(Visitor&& visitor) {
-{% for containedType in type.containedTypes %}
-    {{ method.define_visitor(containedType) | indent }}
-{% endfor %}
-    }
 };
 
 {% endblock %}
