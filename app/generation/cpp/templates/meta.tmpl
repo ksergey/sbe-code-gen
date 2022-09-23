@@ -1,21 +1,8 @@
-{#-
-    Copyright (C) 2022 Sergey Kovalevich <inndie@gmail.com>
-    This file may be distributed under the terms of the GNU GPLv3 license
--#}
-
-{% macro call_get(entry) %}
-{%- if entry.token == 'field' %}
-    {% set type = entry.type -%}
-{%- else %}
-    {% set type = entry -%}
-{%- endif %}
-
-{%- if type.token != 'type' or type.length != 0  %}
-this->{{ entry.name | format_method_name_get }}()
-{% endif %}
+{% macro define(class_name, fields) %}
+// need a good interface for meta
 {% endmacro %}
 
-{% macro define_meta(class_name, fields) %}
+{% macro define0(class_name, fields) %}
 [[nodiscard]] friend constexpr std::size_t propertiesCount({{ class_name }} const&) noexcept {
     return {{ fields | length }};
 }

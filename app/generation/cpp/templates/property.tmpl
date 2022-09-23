@@ -1,9 +1,10 @@
-{#-
-    Copyright (C) 2022 Sergey Kovalevich <inndie@gmail.com>
-    This file may be distributed under the terms of the GNU GPLv3 license
--#}
-
 {% import 'meta.tmpl' as meta %}
+
+{% macro define(class_name, fields) %}
+    {% for field in fields %}
+        {{- define_property(class_name, field) }}
+    {% endfor %}
+{% endmacro %}
 
 {% macro define_property(class_name, entry) %}
 {%- if entry.token == 'type' %}
@@ -291,114 +292,6 @@
 {%- set method_name = entry.name -%}
 {%- set num_in_group_type = (entry.dimensionType.containedTypes | selectattr('name', 'equalto', 'numInGroup') | first) -%}
 
-class {{ group_class_name }} final {
-private:
-    char* buffer_ = nullptr;
-    std::size_t bufferLength_ = 0;
-    std::size_t initialPosition_ = 0;
-    std::size_t* positionPtr_ = nullptr;
-    std::size_t blockLength_ = 0;
-    std::size_t count_ = 0;
-    std::size_t index_ = 0;
-    std::size_t offset_ = 0;
-    std::uint16_t actingVersion_ = 0;
-
-public:
-    {{ group_class_name }}(char* buffer, std::size_t* pos, std::uint16_t actingVersion,
-            std::size_t bufferLength)
-    {
-        {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
-        buffer_ = buffer;
-        bufferLength_ = bufferLength;
-        blockLength_ = dimensions.blockLength();
-        count_ = dimensions.numInGroup();
-        index_ = 0;
-        actingVersion_ = actingVersion;
-        initialPosition_ = *pos;
-        positionPtr_ = pos;
-        *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
-    }
-
-    {{ group_class_name }}(char* buffer, std::size_t count, std::size_t* pos, std::uint16_t actingVersion,
-            std::size_t bufferLength)
-    {
-        if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
-            throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
-        }
-
-        buffer_ = buffer;
-        bufferLength_ = bufferLength;
-        {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
-        dimensions.blockLength(sbeBlockLength());
-        dimensions.numInGroup(count);
-        index_ = 0;
-        count_ = count;
-        blockLength_ = sbeBlockLength();
-        actingVersion_ = actingVersion;
-        initialPosition_ = *pos;
-        positionPtr_ = pos;
-        *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
-    }
-
-    [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
-        return {{ entry.blockLength }};
-    }
-
-    [[nodiscard]] std::size_t sbePosition() const noexcept {
-        return *positionPtr_;
-    }
-
-    std::size_t sbeCheckPosition(std::size_t position) {
-        if (position > bufferLength_) [[unlikely]] {
-            throw std::runtime_error("buffer too short [E100]");
-        }
-        return position;
-    }
-
-    void sbePosition(std::size_t position) {
-        *positionPtr_ = sbeCheckPosition(position);
-    }
-
-    [[nodiscard]] std::size_t count() const noexcept {
-        return count_;
-    }
-
-    [[nodiscard]] bool hasNext() const noexcept {
-        return index_ < count_;
-    }
-
-    {{ group_class_name }} &next() {
-        if (index_ >= count_) {
-            throw std::runtime_error("index >= count [E108]");
-        }
-        offset_ = *positionPtr_;
-        if ((offset_ + blockLength_) > bufferLength_) [[unlikely]] {
-            throw std::runtime_error("buffer too short for next group index [E108]");
-        }
-        *positionPtr_ = offset_ + blockLength_;
-        ++index_;
-        return *this;
-    }
-
-    std::size_t resetCountToIndex() {
-        count_ = index_;
-        {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
-        dimensions.numInGroup(count_);
-        return count_;
-    }
-
-{% for group_entry in entry.fields %}
-    {{ define_property(group_class_name, group_entry) | indent }}
-{% endfor %}
-
-    {{ meta.define_meta(group_class_name, entry.fields) | indent }}
-
-private:
-    [[nodiscard]] std::size_t *sbePositionPtr() noexcept {
-        return positionPtr_;
-    }
-};
-
 [[nodiscard]] {{ group_class_name }} {{ method_name | format_method_name_get }}() {
     return {{ group_class_name }}(buffer_, sbePositionPtr(), actingVersion_, bufferLength_);
 }
@@ -446,5 +339,4 @@ private:
     }
     return *this;
 }
-
 {% endmacro %}

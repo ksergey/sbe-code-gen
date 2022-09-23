@@ -1,11 +1,7 @@
-{#-
-    Copyright (C) 2022 Sergey Kovalevich <inndie@gmail.com>
-    This file may be distributed under the terms of the GNU GPLv3 license
--#}
-
 {% extends 'document.tmpl' %}
 
-{% import 'method.tmpl' as method %}
+{% import 'group.tmpl' as group %}
+{% import 'property.tmpl' as property %}
 {% import 'meta.tmpl' as meta %}
 
 {% block content %}
@@ -127,11 +123,12 @@ public:
         return sbePosition() - offset_;
     }
 
-{% for entry in message.fields %}
-    {{ method.define_property(message_class_name, entry) | indent }}
-{% endfor %}
+    {{ group.define(message.fields) | indent -}}
 
-    {{ meta.define_meta(message_class_name, message.fields) | indent }}
+    {{ property.define(message_class_name, message.fields) | indent }}
+
+    {{ meta.define(message_class_name, message.fields) | indent }}
+
 private:
     std::size_t* sbePositionPtr() noexcept {
         return &position_;
