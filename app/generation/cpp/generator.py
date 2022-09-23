@@ -40,6 +40,7 @@ class Generator(GeneratorBase):
                                   includes = self.generateIncludesForMessage(message, schema))
 
         self.generateDocument('schema.h', 'schema.tmpl', schema = schema, includes = self.generateIncludes(schema))
+        self.generateDocument('common.h', 'common.tmpl', schema = schema)
 
     def makeDocumentName(self, name: str) -> str:
         return self.env.filters['format_class_name'](name) + '.h'
@@ -67,6 +68,8 @@ class Generator(GeneratorBase):
         if schema != None:
             includes.add(self.makeDocumentName(schema['headerType']['name']))
 
+        includes.add('common.h')
+
         return list(includes)
 
     def generateIncludesForComposite(self, composite: dict) -> list:
@@ -74,6 +77,8 @@ class Generator(GeneratorBase):
         for field in composite['containedTypes']:
             if field['token'] in ('composite', 'enum', 'set'):
                 includes.add(self.makeDocumentName(field['type']['name']))
+
+        includes.add('common.h')
 
         return list(includes)
 

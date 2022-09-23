@@ -3,6 +3,8 @@
     This file may be distributed under the terms of the GNU GPLv3 license
 -#}
 
+{% import 'meta.tmpl' as meta %}
+
 {% macro define_property(class_name, entry) %}
 {%- if entry.token == 'type' %}
     {{- define_property_type(class_name, entry) -}}
@@ -388,6 +390,8 @@ public:
 {% for group_entry in entry.fields %}
     {{ define_property(group_class_name, group_entry) | indent }}
 {% endfor %}
+
+    {{ meta.define_meta(group_class_name, entry.fields) | indent }}
 
 private:
     [[nodiscard]] std::size_t *sbePositionPtr() noexcept {

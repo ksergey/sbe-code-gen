@@ -1,0 +1,33 @@
+{#-
+    Copyright (C) 2022 Sergey Kovalevich <inndie@gmail.com>
+    This file may be distributed under the terms of the GNU GPLv3 license
+-#}
+
+{% extends 'document.tmpl' %}
+
+{% block content %}
+template<std::size_t N>
+struct FixedString {
+    char storage[N + 1] = {};
+
+    constexpr FixedString(char const* str) noexcept {
+        for (std::size_t i = 0; i != N; ++i)  {
+            storage[i] = str[i];
+        }
+    }
+    constexpr FixedString(std::string_view str) noexcept {
+        for (std::size_t i = 0; i != N; ++i)  {
+            storage[i] = str[i];
+        }
+    }
+
+    explicit constexpr operator std::string_view() const noexcept {
+        return std::string_view(storage, N);
+    }
+
+    constexpr auto operator<=>(FixedString const&) const = default;
+};
+
+template<std::size_t N> FixedString(char const (&)[N]) -> FixedString<N - 1>;
+
+{% endblock %}

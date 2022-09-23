@@ -6,6 +6,7 @@
 {% extends 'document.tmpl' %}
 
 {% import 'method.tmpl' as method %}
+{% import 'meta.tmpl' as meta %}
 
 {% block content %}
 
@@ -130,6 +131,7 @@ public:
     {{ method.define_property(message_class_name, entry) | indent }}
 {% endfor %}
 
+    {{ meta.define_meta(message_class_name, message.fields) | indent }}
 private:
     std::size_t* sbePositionPtr() noexcept {
         return &position_;

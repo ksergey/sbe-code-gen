@@ -6,12 +6,13 @@
 {% extends 'document.tmpl' %}
 
 {% import 'method.tmpl' as method %}
+{% import 'meta.tmpl' as meta %}
 
 {% block content %}
 
-{%- set enum_class_name = type.name | format_class_name -%}
+{%- set composite_class_name = type.name | format_class_name -%}
 
-class {{ enum_class_name }} final {
+class {{ composite_class_name }} final {
 private:
     char* buffer_ = nullptr;
     std::size_t bufferLength_ = 0;
@@ -19,9 +20,9 @@ private:
     std::uint16_t actingVersion_ = 0;
 
 public:
-    {{ enum_class_name }}() = default;
+    {{ composite_class_name }}() = default;
 
-    {{ enum_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
+    {{ composite_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
             std::uint16_t actingVersion)
         : buffer_(buffer)
         , bufferLength_(bufferLength)
@@ -33,17 +34,17 @@ public:
         }
     }
 
-    {{ enum_class_name }}(char* buffer, std::size_t bufferLength, std::uint16_t actingVersion)
-        : {{ enum_class_name }}(buffer, 0, bufferLength, actingVersion)
+    {{ composite_class_name }}(char* buffer, std::size_t bufferLength, std::uint16_t actingVersion)
+        : {{ composite_class_name }}(buffer, 0, bufferLength, actingVersion)
     {}
 
-    {{ enum_class_name }}(char* buffer, std::size_t bufferLength)
-        : {{ enum_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion())
+    {{ composite_class_name }}(char* buffer, std::size_t bufferLength)
+        : {{ composite_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion())
     {}
 
-    {{ enum_class_name }}& wrap(char* buffer, std::size_t offset, std::uint16_t actingVersion,
+    {{ composite_class_name }}& wrap(char* buffer, std::size_t offset, std::uint16_t actingVersion,
             std::size_t bufferLength) {
-        return *this = {{ enum_class_name }}(buffer, offset, bufferLength, actingVersion);
+        return *this = {{ composite_class_name }}(buffer, offset, bufferLength, actingVersion);
     }
 
     [[nodiscard]] static constexpr std::size_t encodedLength() noexcept {
@@ -79,8 +80,10 @@ public:
     }
 
 {% for containedType in type.containedTypes %}
-    {{ method.define_property(enum_class_name, containedType) | indent }}
+    {{ method.define_property(composite_class_name, containedType) | indent }}
 {% endfor %}
+
+    {{ meta.define_meta(composite_class_name, type.containedTypes) | indent }}
 };
 
 {% endblock %}
