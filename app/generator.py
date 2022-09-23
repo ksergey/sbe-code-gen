@@ -1,244 +1,151 @@
 # Copyright (C) 2022 Sergey Kovalevich <inndie@gmail.com>
 # This file may be distributed under the terms of the GNU GPLv3 license
 
-from __future__ import annotations
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, asdict
-from app.schema import *
+from jinja2 import Environment, FileSystemLoader
+import pathlib
+import os
 
-class GeneratorBase(ABC):
-    primitiveTypeByName = {
-        'char':     PrimitiveType('char',   1,  "CHAR_NULL",    "CHAR_MIN",     "CHAR_MAX"),
-        'int8':     PrimitiveType('int8',   1,  "INT8_NULL",    "INT8_MIN",     "INT8_MAX"),
-        'int16':    PrimitiveType('int16',  2,  "INT16_NULL",   "INT16_MIN",    "INT16_MAX"),
-        'int32':    PrimitiveType('int32',  4,  "INT32_NULL",   "INT32_MIN",    "INT32_MAX"),
-        'int64':    PrimitiveType('int64',  8,  "INT64_NULL",   "INT64_MIN",    "INT64_MAX"),
-        'uint8':    PrimitiveType('uint8',  1,  "UINT8_NULL",   "UINT8_MIN",    "UINT8_MAX"),
-        'uint16':   PrimitiveType('uint16', 2,  "UINT16_NULL",  "UINT16_MIN",   "UINT16_MAX"),
-        'uint32':   PrimitiveType('uint32', 4,  "UINT32_NULL",  "UINT32_MIN",   "UINT32_MAX"),
-        'uint64':   PrimitiveType('uint64', 8,  "UINT64_NULL",  "UINT64_MIN",   "UINT64_MAX"),
-        'float':    PrimitiveType('float',  4,  "FLOAT_NULL",   "FLOAT_MIN",    "FLOAT_MAX"),
-        'double':   PrimitiveType('double', 8,  "DOUBLE_NULL",  "DOUBLE_MIN",   "DOUBLE_MAX")
-    }
+from app.generator import GeneratorBase
 
-    @abstractmethod
+class Generator(GeneratorBase):
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self.env = Environment(
+            loader = FileSystemLoader(f'{pathlib.Path(__file__).parent.resolve()}/templates'),
+            autoescape = False,
+            trim_blocks = True,
+            lstrip_blocks = True,
+            keep_trailing_newline = True
+        )
+        self.addFilters()
+
     def _generateImpl(self, schema: dict) -> None:
-        pass
+        self.ensurePathExists()
 
-    def generate(self, schema: Schema) -> None:
-        ir = {}
+        for encodedType in schema['types']:
+            documentName = self.makeDocumentName(encodedType['name'])
+            if encodedType['token'] == 'type':
+                pass
+            elif encodedType['token'] == 'composite':
+                self.generateDocument(documentName, 'composite.tmpl', type = encodedType, schema = schema,
+                                      includes = self.generateIncludesForComposite(encodedType))
+            elif encodedType['token'] == 'enum':
+                self.generateDocument(documentName, 'enum.tmpl', type = encodedType, schema = schema)
+            elif encodedType['token'] == 'set':
+                self.generateDocument(documentName, 'set.tmpl', type = encodedType, schema = schema)
 
-        if schema.package != None:
-            ir['package'] = schema.package.split('.')
-        else:
-            ir['package'] = None
+        for message in schema['messages']:
+            documentName = self.makeDocumentName(message['name'])
+            self.generateDocument(documentName, 'message.tmpl', message = message, schema = schema,
+                                  includes = self.generateIncludesForMessage(message, schema))
 
-        ir['id'] = schema.id
-        ir['version'] = schema.version
-        ir['byteOrder'] = schema.byteOrder.value
-        ir['description'] = schema.description
-        ir['headerType'] = GeneratorBase.makeEncodedTypeDefinition(schema.headerType)
+        self.generateDocument('schema.h', 'schema.tmpl', schema = schema, includes = self.generateIncludes(schema))
+        self.generateDocument('common.h', 'common.tmpl', schema = schema)
 
-        ir['types'] = []
-        for type in schema.types.values():
-            ir['types'].append(GeneratorBase.makeEncodedTypeDefinition(type))
+    def makeDocumentName(self, name: str) -> str:
+        return self.env.filters['format_class_name'](name) + '.h'
 
-        ir['messages'] = []
-        for message in schema.messages.values():
-            ir['messages'].append(GeneratorBase.makeMessageDefinition(message))
+    def generateDocument(self, documentName: str, templateName: str, **kwargs) -> None:
+        template = self.env.get_template(templateName)
+        documentPath = f'{self.path}/{documentName}'
+        documentContent = template.render(**kwargs)
+        with open(documentPath, mode = 'w', encoding = 'utf8') as document:
+            document.write(documentContent)
 
-        self._generateImpl(ir)
+    def generateIncludesForMessage(self, message: dict, schema: dict = None) -> list:
+        includes = set()
+        for field in message['fields']:
+            if field['token'] == 'field':
+                if field['type']['token'] in ('composite', 'enum', 'set'):
+                    includes.add(self.makeDocumentName(field['type']['name']))
+            elif field['token'] == 'group':
+                includes.add(self.makeDocumentName(field['dimensionType']['name']))
+                # this func could be used for iterate over group fields
+                includes = includes.union(self.generateIncludesForMessage(field))
+            elif field['token'] == 'data':
+                includes.add(self.makeDocumentName(field['type']['name']))
+
+        if schema != None:
+            includes.add(self.makeDocumentName(schema['headerType']['name']))
+
+        includes.add('common.h')
+
+        return list(includes)
+
+    def generateIncludesForComposite(self, composite: dict) -> list:
+        includes = set()
+        for field in composite['containedTypes']:
+            if field['token'] in ('composite', 'enum', 'set'):
+                includes.add(self.makeDocumentName(field['type']['name']))
+
+        includes.add('common.h')
+
+        return list(includes)
+
+    def generateIncludes(self, schema: dict) -> list:
+        includes = set()
+        for message in schema['messages']:
+            includes.add(self.makeDocumentName(message['name']))
+
+        return list(includes)
+
+    def ensurePathExists(self) -> None:
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
+
+    def addFilters(self) -> None:
+        self.env.filters['format_class_name'] = lambda value: value[0].upper() + value[1:]
+        self.env.filters['format_method_name_get'] = lambda value: value[0].lower() + value[1:]
+        self.env.filters['format_method_name_set'] = lambda value: value[0].lower() + value[1:]
+        self.env.filters['format_method_name_is_present'] = lambda value: 'is' + value[0].upper() + value[1:] + 'Present'
+        self.env.filters['format_method_name_reset'] = lambda value: value[0].lower() + value[1:] + 'Reset'
+        self.env.filters['format_method_name_length'] = lambda value: value[0].lower() + value[1:] + 'Length'
+        self.env.filters['format_method_name_get_count'] = lambda value: value[0].lower() + value[1:] + 'Count'
+        self.env.filters['format_constant_name'] = lambda value: 'k' + value[0].upper() + value[1:]
+        self.env.filters['replace_keyword']  = Generator.filterReplaceKeword
 
     @staticmethod
-    def makeEncodedTypeDefinition(type: EncodedType) -> dict:
-        assert (isinstance(type, (Type, Composite, Enum, Set))), "unknown type"
-        if isinstance(type, Type):
-            return GeneratorBase.makeTypeDefinition(type)
-        if isinstance(type, Composite):
-            return GeneratorBase.makeCompositeDefinition(type)
-        if isinstance(type, Enum):
-            return GeneratorBase.makeEnumDefinition(type)
-        if isinstance(type, Set):
-            return GeneratorBase.makeSetDefinition(type)
-
-    @staticmethod
-    def makeTypeDefinition(type: Type) -> dict:
+    def filterReplaceKeword(value: str) -> str:
         return {
-            'token': 'type',
-            'name': type.name,
-            'description': type.description,
-            'presence': type.presence.value,
-            'nullValue': type.nullValue if type.nullValue != None else type.primitiveType.nullValue,
-            'minValue': type.minValue if type.minValue != None else type.primitiveType.minValue,
-            'maxValue': type.maxValue if type.maxValue != None else type.primitiveType.maxValue,
-            'length': type.length,
-            'offset': type.offset,
-            'primitiveType': type.primitiveType.name,
-            'semanticType': type.semanticType,
-            'sinceVersion': type.sinceVersion,
-            'deprecated': type.deprecated,
-            'constValue': type.constValue,
-            'characterEncoding': type.characterEncoding,
-            'encodedLength': type.encodedLength()
-        }
-
-    @staticmethod
-    def makeCompositeDefinition(type: Composite) -> dict:
-        containedTypes = []
-        for containedType in type.containedTypes.values():
-            assert (isinstance(containedType, (Type, Composite, Enum, Set, Ref))), "unknown type"
-            entry = None
-            if isinstance(containedType, Type):
-                entry = GeneratorBase.makeTypeDefinition(containedType)
-            elif isinstance(containedType, Composite):
-                entry = GeneratorBase.makeCompositeDefinition(containedType)
-            elif isinstance(containedType, Enum):
-                entry = GeneratorBase.makeEnumDefinition(containedType)
-            elif isinstance(containedType, Set):
-                entry = GeneratorBase.makeSetDefinition(containedType)
-            elif isinstance(containedType, Ref):
-                entry = GeneratorBase.makeEncodedTypeDefinition(containedType.type)
-                entry['name'] = containedType.name
-                entry['offset'] = containedType.offset
-                entry['description'] = containedType.description
-                entry['sinceVersion'] = containedType.sinceVersion
-                entry['deprecated'] = containedType.deprecated
-            containedTypes.append(entry)
-
-        return {
-            'token': 'composite',
-            'name': type.name,
-            'offset': type.offset,
-            'description': type.description,
-            'semanticType': type.semanticType,
-            'sinceVersion': type.sinceVersion,
-            'deprecated': type.deprecated,
-            'containedTypes': containedTypes,
-            'encodedLength': type.encodedLength()
-        }
-
-    @staticmethod
-    def makeEnumDefinition(type: Enum) -> dict:
-        validValues = []
-        for validValue in type.validValueByName.values():
-            validValues.append({
-                'name': validValue.name,
-                'value': validValue.value,
-                'description': validValue.description,
-                'sinceVersion': validValue.sinceVersion,
-                'deprecated': validValue.deprecated
-            })
-        return {
-            'token': 'enum',
-            'name': type.name,
-            'description': type.description,
-            'encodingType': type.encodingType.name,
-            'sinceVersion': type.sinceVersion,
-            'deprecated': type.deprecated,
-            'offset': type.offset,
-            'nullValue': type.nullValue if type.nullValue != None else type.encodingType.nullValue,
-            'validValues': validValues,
-            'encodedLength': type.encodedLength()
-        }
-
-    @staticmethod
-    def makeSetDefinition(type: Set) -> dict:
-        choices = []
-        for choice in type.choiceByName.values():
-            choices.append({
-                'name': choice.name,
-                'value': choice.value,
-                'description': choice.description,
-                'sinceVersion': choice.sinceVersion,
-                'deprecated': choice.deprecated
-            })
-        return {
-            'token': 'set',
-            'name': type.name,
-            'description': type.description,
-            'encodingType': type.encodingType.name,
-            'sinceVersion': type.sinceVersion,
-            'deprecated': type.deprecated,
-            'offset': type.offset,
-            'choices': choices,
-            'encodedLength': type.encodedLength()
-        }
-
-    @staticmethod
-    def makeFieldDefinition(field: Field) -> dict:
-        return {
-            'token': 'field',
-            'name': field.name,
-            'id': field.id,
-            'description': field.description,
-            'type': GeneratorBase.makeEncodedTypeDefinition(field.type),
-            'offset': field.offset,
-            'presence': field.presence.value,
-            'valueRef': field.valueRef,
-            'semanticType': field.semanticType,
-            'sinceVersion': field.sinceVersion,
-            'deprecated': field.deprecated
-        }
-
-    @staticmethod
-    def makeGroupDefinition(group: Group) -> dict:
-        fields = []
-        for field in group.fields.values():
-            assert (isinstance(field, (Field, Group, Data))), "unknown group field"
-            entry = None
-            if isinstance(field, Field):
-                entry = GeneratorBase.makeFieldDefinition(field)
-            elif isinstance(field, Group):
-                entry = GeneratorBase.makeGroupDefinition(field)
-            elif isinstance(field, Data):
-                entry = GeneratorBase.makeDataDefinition(field)
-            fields.append(entry)
-
-        return {
-            'token': 'group',
-            'name': group.name,
-            'id': group.id,
-            'description': group.description,
-            'dimensionType': GeneratorBase.makeEncodedTypeDefinition(group.dimensionType),
-            'blockLength': group.blockLength,
-            'fields': fields
-        }
-
-    @staticmethod
-    def makeDataDefinition(data: Data) -> dict:
-        return {
-            'token': 'data',
-            'name': data.name,
-            'id': data.id,
-            'description': data.description,
-            'type': GeneratorBase.makeEncodedTypeDefinition(data.type),
-            'semanticType': data.semanticType,
-            'sinceVersion': data.sinceVersion,
-            'deprecated': data.deprecated
-        }
-
-    @staticmethod
-    def makeMessageDefinition(message: Message) -> dict:
-        fields = []
-        for field in message.fields.values():
-            assert (isinstance(field, (Field, Group, Data))), "unknown message field"
-            entry = None
-            if isinstance(field, Field):
-                entry = GeneratorBase.makeFieldDefinition(field)
-            elif isinstance(field, Group):
-                entry = GeneratorBase.makeGroupDefinition(field)
-            elif isinstance(field, Data):
-                entry = GeneratorBase.makeDataDefinition(field)
-            fields.append(entry)
-
-        return {
-            'token': 'message',
-            'name': message.name,
-            'id': message.id,
-            'description': message.description,
-            'blockLength': message.blockLength,
-            'semanticType': message.semanticType,
-            'sinceVersion': message.sinceVersion,
-            'deprecated': message.deprecated,
-            'fields': fields
-        }
+            'int8':         'std::int8_t',
+            'int16':        'std::int16_t',
+            'int32':        'std::int32_t',
+            'int64':        'std::int64_t',
+            'uint8':        'std::uint8_t',
+            'uint16':       'std::uint16_t',
+            'uint32':       'std::uint32_t',
+            'uint64':       'std::uint64_t',
+            'CHAR_NULL':    '0',
+            'CHAR_MIN':     '0x20',
+            'CHAR_MAX':     '0x7e',
+            'INT8_NULL':    'std::numeric_limits<std::int8_t>::min()',
+            'INT8_MIN':     'std::numeric_limits<std::int8_t>::min() + 1',
+            'INT8_MAX':     'std::numeric_limits<std::int8_t>::max()',
+            'INT16_NULL':   'std::numeric_limits<std::int16_t>::min()',
+            'INT16_MIN':    'std::numeric_limits<std::int16_t>::min() + 1',
+            'INT16_MAX':    'std::numeric_limits<std::int16_t>::max()',
+            'INT32_NULL':   'std::numeric_limits<std::int32_t>::min()',
+            'INT32_MIN':    'std::numeric_limits<std::int32_t>::min() + 1',
+            'INT32_MAX':    'std::numeric_limits<std::int32_t>::max()',
+            'INT64_NULL':   'std::numeric_limits<std::int64_t>::min()',
+            'INT64_MIN':    'std::numeric_limits<std::int64_t>::min() + 1',
+            'INT64_MAX':    'std::numeric_limits<std::int64_t>::max()',
+            'UINT8_NULL':   'std::numeric_limits<std::uint8_t>::max()',
+            'UINT8_MIN':    'std::numeric_limits<std::uint8_t>::min()',
+            'UINT8_MAX':    'std::numeric_limits<std::uint8_t>::max() - 1',
+            'UINT16_NULL':  'std::numeric_limits<std::uint16_t>::max()',
+            'UINT16_MIN':   'std::numeric_limits<std::uint16_t>::min()',
+            'UINT16_MAX':   'std::numeric_limits<std::uint16_t>::max() - 1',
+            'UINT32_NULL':  'std::numeric_limits<std::uint32_t>::max()',
+            'UINT32_MIN':   'std::numeric_limits<std::uint32_t>::min()',
+            'UINT32_MAX':   'std::numeric_limits<std::uint32_t>::max() - 1',
+            'UINT64_NULL':  'std::numeric_limits<std::uint64_t>::max()',
+            'UINT64_MIN':   'std::numeric_limits<std::uint64_t>::min()',
+            'UINT64_MAX':   'std::numeric_limits<std::uint64_t>::max() - 1',
+            'FLOAT_NULL':   'std::numeric_limits<float>::quiet_NaN()',
+            'FLOAT_MIN':    'std::numeric_limits<float>::min()',
+            'FLOAT_MAX':    'std::numeric_limits<float>::max()',
+            'DOUBLE_NULL':  'std::numeric_limits<double>::quiet_NaN()',
+            'DOUBLE_MIN':   'std::numeric_limits<double>::min()',
+            'DOUBLE_MAX':   'std::numeric_limits<double>::max()'
+        }.get(value, value)
