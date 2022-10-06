@@ -2,10 +2,10 @@
 
 {% block content %}
 
-{%- set type_class_name = type.name | format_class_name -%}
+{%- set enum_class_name = type.name | format_class_name -%}
 {%- set underlying_type = type.encodingType | replace_keyword -%}
 
-class {{ type_class_name }} final {
+class {{ enum_class_name }} final {
 private:
     {{ underlying_type }} value_;
 
@@ -21,15 +21,15 @@ public:
         NULL_VALUE = {{ type.nullValue | replace_keyword }}
     };
 
-    constexpr {{ type_class_name }}() noexcept
-        : {{ type_class_name }}(enumerated::NULL_VALUE)
+    constexpr {{ enum_class_name }}() noexcept
+        : {{ enum_class_name }}(enumerated::NULL_VALUE)
     {}
 
-    constexpr {{ type_class_name }}(enumerated value) noexcept
+    constexpr {{ enum_class_name }}(enumerated value) noexcept
         : value_(value)
     {}
 
-    explicit constexpr {{ type_class_name }}({{underlying_type}} value) noexcept
+    explicit constexpr {{ enum_class_name }}({{underlying_type}} value) noexcept
         : value_(value)
     {}
 
@@ -37,10 +37,10 @@ public:
         return enumerated(value_);
     }
 
-    [[nodiscard]] static constexpr char const* toString({{ type_class_name }} value) noexcept {
+    [[nodiscard]] static constexpr char const* toString({{ enum_class_name }} value) noexcept {
         switch (value) {
 {% for validValue in type.validValues %}
-            case {{ type_class_name }}::{{ validValue.name }}:
+            case {{ enum_class_name }}::{{ validValue.name }}:
                 return "{{ validValue.name }}";
 {% endfor %}
             default:
@@ -49,17 +49,17 @@ public:
         return "";
     }
 
-    [[nodiscard]] static constexpr {{ type_class_name }} fromString(char const* value) noexcept {
+    [[nodiscard]] static constexpr {{ enum_class_name }} fromString(char const* value) noexcept {
         using namespace std::string_view_literals;
 {% for validValue in type.validValues %}
         if ("{{ validValue.name }}"sv == value) {
-            return {{ type_class_name }}::{{ validValue.name }};
+            return {{ enum_class_name }}::{{ validValue.name }};
         }
 {% endfor %}
         return NULL_VALUE;
     }
 
-    [[nodiscard]] friend constexpr auto operator<=>({{ type_class_name }} const& a, {{ type_class_name }} const& b) noexcept {
+    [[nodiscard]] friend constexpr auto operator<=>({{ enum_class_name }} const& a, {{ enum_class_name }} const& b) noexcept {
         return a.value_ <=> b.value_;
     };
 };
