@@ -1,5 +1,4 @@
 {% import 'property.tmpl' as property %}
-{% import 'meta.tmpl' as meta %}
 
 {% macro define(fields) %}
     {% for field in fields %}
@@ -112,11 +111,9 @@ public:
     }
 
     {{ define(entry.fields) | indent -}}
-
+    {{ '' -}}
     {{ property.define(group_class_name, entry.fields) | indent }}
-
-    {{ meta.define(group_class_name, entry.fields) | indent }}
-
+    {{- '' -}}
 private:
     [[nodiscard]] std::size_t *sbePositionPtr() noexcept {
         return positionPtr_;
