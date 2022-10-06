@@ -2,7 +2,6 @@
 
 {% import 'group.tmpl' as group %}
 {% import 'property.tmpl' as property %}
-{% import 'meta.tmpl' as meta %}
 
 {% block content %}
 
@@ -123,12 +122,10 @@ public:
         return sbePosition() - offset_;
     }
 
-    {{ group.define(message.fields) | indent -}}
-
+    {{ group.define(message.fields) | indent }}
+    {{ '' -}}
     {{ property.define(message_class_name, message.fields) | indent }}
-
-    {{ meta.define(message_class_name, message.fields) | indent }}
-
+    {{- '' -}}
 private:
     std::size_t* sbePositionPtr() noexcept {
         return &position_;
