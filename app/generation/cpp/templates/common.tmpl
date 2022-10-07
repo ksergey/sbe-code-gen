@@ -10,14 +10,23 @@ struct FixedString {
             storage[i] = str[i];
         }
     }
+
     constexpr FixedString(std::string_view str) noexcept {
         for (std::size_t i = 0; i != N; ++i)  {
             storage[i] = str[i];
         }
     }
 
-    explicit constexpr operator std::string_view() const noexcept {
+    [[nodiscard]] explicit constexpr operator std::string_view() const noexcept {
         return std::string_view(storage, N);
+    }
+
+    [[nodiscard]] constexpr char const* c_str() const noexcept {
+        return storage;
+    }
+
+    [[nodiscard]] static constexpr std::size_t size() noexcept {
+        return N;
     }
 
     constexpr auto operator<=>(FixedString const&) const = default;
@@ -25,4 +34,46 @@ struct FixedString {
 
 template<std::size_t N> FixedString(char const (&)[N]) -> FixedString<N - 1>;
 
+template<FixedString Name, class T, std::size_t Length>
+struct TypeDescription;
+
+template<FixedString Name, class T>
+struct TypeDescription<Name, T, 0> {
+    using value_type = T;
+
+    static constexpr auto length = std::size_t(0);
+};
+
+template<FixedString Name, class T>
+struct TypeDescription<Name, T, 1> {
+    using value_type = T;
+
+    static constexpr auto length = std::size_t(1);
+
+    template<T Value>
+    struct Constant {
+        using value_type = T;
+        static constexpr value_type value = Value;
+        constexpr operator value_type() const noexcept { return value; }
+    };
+};
+
+template<FixedString Name, std::size_t Length>
+struct TypeDescription<Name, char, Length> {
+    using value_type = std::string_view;
+    using underlying_type = T;
+
+    static constexpr auto length = Length;
+    static constexpr auto isVariableLength = (Length == std::size_t(-1));
+
+    template<FixedString Value>
+    struct Constant {
+        static_assert(Value.size() == Length || isVariableLength, "string length size mismatch");
+
+        using value_type = std::string_view;
+        static constexpr value_type value = static_cast<std::string_view>(Value);
+        constexpr operator value_type() const noexcept { return value; }
+    };
+};
+{{ '' -}}
 {% endblock %}
