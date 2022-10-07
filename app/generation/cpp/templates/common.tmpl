@@ -38,13 +38,6 @@ template<FixedString Name, class T, std::size_t Length>
 struct TypeDescription;
 
 template<FixedString Name, class T>
-struct TypeDescription<Name, T, 0> {
-    using value_type = T;
-
-    static constexpr auto length = std::size_t(0);
-};
-
-template<FixedString Name, class T>
 struct TypeDescription<Name, T, 1> {
     using value_type = T;
 
@@ -56,24 +49,39 @@ struct TypeDescription<Name, T, 1> {
         static constexpr value_type value = Value;
         constexpr operator value_type() const noexcept { return value; }
     };
+
+    template<T V>
+    using Value = Constant<V>;
 };
 
 template<FixedString Name, std::size_t Length>
 struct TypeDescription<Name, char, Length> {
+    static_assert(Length != 1, "impossible case, Luke");
+
     using value_type = std::string_view;
-    using underlying_type = T;
+    using underlying_type = char;
 
     static constexpr auto length = Length;
-    static constexpr auto isVariableLength = (Length == std::size_t(-1));
+    static constexpr auto isVariableLength = (Length == 0);
 
     template<FixedString Value>
     struct Constant {
-        static_assert(Value.size() == Length || isVariableLength, "string length size mismatch");
+        static_assert(isVariableLength || Value.size() == Length, "string length size mismatch");
 
         using value_type = std::string_view;
         static constexpr value_type value = static_cast<std::string_view>(Value);
         constexpr operator value_type() const noexcept { return value; }
     };
+
+    template<char V>
+    struct Value {
+        using value_type = char;
+        static constexpr value_type value = V;
+        constexpr operator value_type() const noexcept { return value; }
+    };
 };
+
+template<FixedString Name, std::size_t Length>
+struct TypeDescription<Name, std::uint8_t, Length> : TypeDescription<Name, char, Length> {};
 {{ '' -}}
 {% endblock %}
