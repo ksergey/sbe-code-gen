@@ -15,6 +15,7 @@
 {% for include in includes | sort %}
 #include "{{ include }}"
 {% endfor %}
+{{- '' -}}
 {% endblock %}
 
 {% if schema.package != None %}
