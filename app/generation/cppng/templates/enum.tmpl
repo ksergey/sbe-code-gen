@@ -1,0 +1,67 @@
+{% extends 'document.tmpl' %}
+
+{% block content %}
+
+{%- set enum_class_name = type.name | format_class_name -%}
+{%- set underlying_type = type.encodingType | replace_keyword -%}
+
+class {{ enum_class_name }} final {
+private:
+    {{ underlying_type }} value_;
+
+public:
+    enum enumerated : {{ underlying_type }} {
+{% for validValue in type.validValues %}
+    {% if type.encodingType == 'char' %}
+        {{ validValue.name }} = '{{ validValue.value }}',
+    {% else %}
+        {{ validValue.name }} = {{ validValue.value }},
+    {% endif %}
+{% endfor %}
+        NULL_VALUE = {{ type.nullValue | replace_keyword }}
+    };
+
+    constexpr {{ enum_class_name }}() noexcept
+        : {{ enum_class_name }}(enumerated::NULL_VALUE)
+    {}
+
+    constexpr {{ enum_class_name }}(enumerated value) noexcept
+        : value_(value)
+    {}
+
+    explicit constexpr {{ enum_class_name }}({{ underlying_type }} value) noexcept
+        : value_(value)
+    {}
+
+    [[nodiscard]] constexpr operator enumerated() const noexcept {
+        return enumerated(value_);
+    }
+
+    [[nodiscard]] static constexpr char const* toString({{ enum_class_name }} value) noexcept {
+        switch (value) {
+{% for validValue in type.validValues %}
+            case {{ enum_class_name }}::{{ validValue.name }}:
+                return "{{ validValue.name }}";
+{% endfor %}
+            default:
+                break;
+        }
+        return "";
+    }
+
+    [[nodiscard]] static constexpr {{ enum_class_name }} fromString(char const* value) noexcept {
+        using namespace std::string_view_literals;
+{% for validValue in type.validValues %}
+        if ("{{ validValue.name }}"sv == value) {
+            return {{ enum_class_name }}::{{ validValue.name }};
+        }
+{% endfor %}
+        return NULL_VALUE;
+    }
+
+    [[nodiscard]] friend constexpr auto operator<=>({{ enum_class_name }} const& a, {{ enum_class_name }} const& b) noexcept {
+        return a.value_ <=> b.value_;
+    };
+};
+
+{% endblock %}

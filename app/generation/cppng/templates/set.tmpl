@@ -1,0 +1,50 @@
+{% extends 'document.tmpl' %}
+
+{% block content %}
+
+{%- set set_class_name = type.name | format_class_name -%}
+{%- set underlying_type = type.encodingType | replace_keyword -%}
+
+class {{ set_class_name }} final {
+private:
+    {{ underlying_type }} value_ = 0;
+
+public:
+{% for choice in type.choices %}
+    static constexpr auto {{ choice.name | format_constant_name }} = {{ underlying_type }}(1 << {{ choice.value }});
+{% endfor %}
+
+    constexpr {{ set_class_name }}() = default;
+
+    constexpr {{ set_class_name }}({{ underlying_type }} value) noexcept
+        : value_(value)
+    {}
+
+    [[nodiscard]] constexpr explicit operator {{ underlying_type }}() const noexcept {
+        return value_;
+    }
+
+{% for choice in type.choices %}
+    [[nodiscard]] constexpr bool {{ choice.name | format_method_name_get }}() const noexcept {
+        return {{ choice.name | format_constant_name }} == (raw() & {{ choice.name | format_constant_name }});
+    }
+
+    constexpr {{ set_class_name }}& {{ choice.name | format_method_name_set }}(bool value) noexcept {
+        return raw(value ? (raw() | {{ choice.name | format_constant_name }}) : (raw() & ~{{ choice.name | format_constant_name }}));
+    }
+
+{% endfor %}
+    [[nodiscard]] constexpr {{ underlying_type }} raw() const noexcept {
+        return value_;
+    }
+
+    constexpr {{ set_class_name }}& raw({{ underlying_type }} value) noexcept {
+        return *this = {{ set_class_name }}(value);
+    }
+
+    constexpr {{ set_class_name }}& clear() noexcept {
+        return raw(0);
+    }
+};
+
+{% endblock -%}

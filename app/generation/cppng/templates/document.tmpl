@@ -1,14 +1,12 @@
-{#-
-    Copyright (C) 2022 Sergey Kovalevich <inndie@gmail.com>
-    This file may be distributed under the terms of the GNU GPLv3 license
--#}
-
-// Auto-generated file
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/TheBoysCoding/sbe-code-gen
 
 #pragma once
 
 {% block include %}
+#include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -19,6 +17,7 @@
 {% for include in includes | sort %}
 #include "{{ include }}"
 {% endfor %}
+{{- '' -}}
 {% endblock %}
 
 {% if schema.package != None %}

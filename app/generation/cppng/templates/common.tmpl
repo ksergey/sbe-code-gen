@@ -1,0 +1,201 @@
+{% extends 'document.tmpl' %}
+
+{% block content %}
+template<std::size_t N>
+struct FixedString {
+    char storage[N + 1] = {};
+
+    constexpr FixedString(char const* str) noexcept {
+        for (std::size_t i = 0; i != N; ++i)  {
+            storage[i] = str[i];
+        }
+    }
+
+    constexpr FixedString(std::string_view str) noexcept {
+        for (std::size_t i = 0; i != N; ++i)  {
+            storage[i] = str[i];
+        }
+    }
+
+    [[nodiscard]] explicit constexpr operator std::string_view() const noexcept {
+        return std::string_view(storage, N);
+    }
+
+    [[nodiscard]] constexpr char const* c_str() const noexcept {
+        return storage;
+    }
+
+    [[nodiscard]] static constexpr std::size_t size() noexcept {
+        return N;
+    }
+
+    constexpr auto operator<=>(FixedString const&) const = default;
+};
+
+template<std::size_t N> FixedString(char const (&)[N]) -> FixedString<N - 1>;
+
+template<FixedString Name, typename T, std::size_t Length>
+struct TypeDescription;
+
+template<FixedString Name, typename T>
+struct TypeDescription<Name, T, 1> {
+    using value_type = T;
+
+    static constexpr auto length = std::size_t(1);
+
+    template<T Value>
+    struct Constant {
+        using value_type = T;
+        static constexpr value_type value = Value;
+        constexpr operator value_type() const noexcept { return value; }
+    };
+
+    template<T V>
+    using Value = Constant<V>;
+};
+
+template<FixedString Name, std::size_t Length>
+struct TypeDescription<Name, char, Length> {
+    static_assert(Length != 1, "impossible case, Luke");
+
+    using value_type = std::string_view;
+    using underlying_type = char;
+
+    static constexpr auto length = Length;
+    static constexpr auto isVariableLength = (Length == 0);
+
+    template<FixedString Value>
+    struct Constant {
+        static_assert(isVariableLength || Value.size() == Length, "string length size mismatch");
+
+        using value_type = std::string_view;
+        static constexpr value_type value = static_cast<std::string_view>(Value);
+        constexpr operator value_type() const noexcept { return value; }
+    };
+
+    template<char V>
+    struct Value {
+        using value_type = char;
+        static constexpr value_type value = V;
+        constexpr operator value_type() const noexcept { return value; }
+    };
+};
+
+template<FixedString Name>
+struct TypeDescription<Name, std::uint8_t, 0> : TypeDescription<Name, char, 0> {};
+
+enum class Presence {
+    REQUIRED, OPTIONAL, CONSTANT
+};
+
+template<auto Value>
+struct ValueStorage {
+    [[nodiscard]] constexpr operator decltype(Value)() const noexcept {
+        return Value;
+    }
+};
+
+using PresenceRequired = ValueStorage<Presence::REQUIRED>;
+using PresenceOptional = ValueStorage<Presence::OPTIONAL>;
+using PresenceConstant = ValueStorage<Presence::CONSTANT>;
+
+struct TrimString {};
+inline constexpr auto trim_string = TrimString();
+
+template<typename MinValue = void, typename MaxValue = void, typename NullValue = void, typename ConstValue = void>
+struct FieldTraits {
+    using min_value_type = MinValue;
+    using max_value_type = MaxValue;
+    using null_value_type = NullValue;
+    using const_value_type = ConstValue;
+};
+
+template<FixedString Name, std::size_t Offset, typename TypeDescription, typename FieldPresence, typename Traits = FieldTraits<>, class = void>
+struct FieldDescription {
+    [[nodiscard]] static constexpr std::string_view name() noexcept {
+        return static_cast<std::string_view>(Name);
+    }
+
+    template<typename Context>
+    [[nodiscard]] static constexpr typename TypeDescription::value_type load([[maybe_unused]] Context const& context) noexcept
+    {
+        if constexpr (FieldPresence() == Presence::CONSTANT) {
+            return typename Traits::const_value_type();
+        } else {
+            if constexpr (TypeDescription::length == 1) {
+                return *std::bit_cast<typename TypeDescription::value_type const*>(context.buffer + context.offset + Offset);
+            } else {
+                static_assert(TypeDescription::length > 1);
+                return typename TypeDescription::value_type(std::bit_cast<typename TypeDescription::underlying_type const*>(context.buffer + context.offset + Offset), TypeDescription::length);
+            }
+        }
+    }
+
+    template<typename Context>
+    [[nodiscard]] static constexpr std::string_view load(TrimString, [[maybe_unused]] Context const& context) noexcept
+    {
+        static_assert(std::is_same_v<typename TypeDescription::value_type, std::string_view>);
+        static_assert(TypeDescription::length > 1);
+
+        if constexpr (FieldPresence() == Presence::CONSTANT) {
+            return typename Traits::const_value_type();
+        } else {
+            auto value = std::string_view(std::bit_cast<typename TypeDescription::underlying_type const*>(context.buffer + context.offset + Offset), TypeDescription::length);
+            if (auto const found = value.find('\0'); found != value.npos) {
+                return value.substr(0, found);
+            } else {
+                return value;
+            }
+        }
+    }
+
+    template<typename Context>
+    static constexpr void store(Context& context, typename TypeDescription::value_type value) noexcept
+    {
+        static_assert(FieldPresence() != Presence::CONSTANT, "can't store anything for constant field");
+
+        if constexpr (TypeDescription::length == 1) {
+            *std::bit_cast<typename TypeDescription::value_type*>(context.buffer + context.offset + Offset) = value;
+        } else {
+            static_assert(TypeDescription::length > 1);
+            // TODO: std::string_view case
+            std::copy_n(std::begin(value), TypeDescription::length, std::bit_cast<typename TypeDescription::underlying_type*>(context.buffer + context.offset + Offset));
+        }
+    }
+
+    template<typename Context>
+    static constexpr void store(TrimString, Context& context, std::string_view value) noexcept
+    {
+        static_assert(std::is_same_v<typename TypeDescription::value_type, std::string_view>);
+        static_assert(TypeDescription::length > 1);
+        static_assert(FieldPresence() != Presence::CONSTANT, "can't store anything for constant field");
+
+        auto const size = std::min<std::size_t>(std::size(value), TypeDescription::length);
+        std::copy_n(std::begin(value), size, std::bit_cast<typename TypeDescription::underlying_type*>(context.buffer + context.offset + Offset));
+    }
+
+    template<typename Context>
+    [[nodiscard]] static constexpr bool present([[maybe_unused]] Context const& context) noexcept {
+        if constexpr (FieldPresence() == Presence::CONSTANT || FieldPresence() == Presence::REQUIRED) {
+            return true;
+        } else {
+            constexpr auto nullValue = static_cast<typename TypeDescription::value_type>(typename Traits::null_value_type());
+            if constexpr (TypeDescription::length == 1) {
+                if constexpr (std::is_floating_point_v<typename TypeDescription::value_type>) {
+                    if constexpr (std::isnan(nullValue)) {
+                        return !std::isnan(load(context));
+                    } else {
+                        return load(context) != nullValue;
+                    }
+                } else {
+                    return load(context) != nullValue;
+                }
+            } else {
+                return load(context).front() != nullValue;
+            }
+        }
+    }
+};
+
+{{ '' -}}
+{% endblock %}

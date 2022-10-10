@@ -1,7 +1,7 @@
 # Copyright (C) 2022 Sergey Kovalevich <inndie@gmail.com>
 # This file may be distributed under the terms of the GNU GPLv3 license
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
 import pathlib
 import os
 
@@ -12,7 +12,7 @@ class Generator(GeneratorBase):
         self.path = path
         self.env = Environment(
             loader = FileSystemLoader(f'{pathlib.Path(__file__).parent.resolve()}/templates'),
-            autoescape = select_autoescape(),
+            autoescape = False,
             trim_blocks = True,
             lstrip_blocks = True,
             keep_trailing_newline = True
@@ -39,11 +39,11 @@ class Generator(GeneratorBase):
             self.generateDocument(documentName, 'message.tmpl', message = message, schema = schema,
                                   includes = self.generateIncludesForMessage(message, schema))
 
-        documentName = self.makeDocumentName('schema')
-        self.generateDocument(documentName, 'schema.tmpl', includes = self.generateIncludes(schema))
+        self.generateDocument('schema.h', 'schema.tmpl', schema = schema, includes = self.generateIncludes(schema))
+        self.generateDocument('common.h', 'common.tmpl', schema = schema)
 
     def makeDocumentName(self, name: str) -> str:
-        return self.env.filters['className'](name) + '.h'
+        return self.env.filters['format_class_name'](name) + '.h'
 
     def generateDocument(self, documentName: str, templateName: str, **kwargs) -> None:
         template = self.env.get_template(templateName)
@@ -68,6 +68,8 @@ class Generator(GeneratorBase):
         if schema != None:
             includes.add(self.makeDocumentName(schema['headerType']['name']))
 
+        includes.add('common.h')
+
         return list(includes)
 
     def generateIncludesForComposite(self, composite: dict) -> list:
@@ -75,6 +77,8 @@ class Generator(GeneratorBase):
         for field in composite['containedTypes']:
             if field['token'] in ('composite', 'enum', 'set'):
                 includes.add(self.makeDocumentName(field['type']['name']))
+
+        includes.add('common.h')
 
         return list(includes)
 
@@ -90,19 +94,18 @@ class Generator(GeneratorBase):
             os.makedirs(self.path)
 
     def addFilters(self) -> None:
-        self.env.filters['className'] = lambda value: value[0].upper() + value[1:]
-        self.env.filters['methodName_GET'] = lambda value: value[0].lower() + value[1:]
-        self.env.filters['methodName_GET_RAW'] = lambda value: value[0].lower() + value[1:] + 'Raw'
-        self.env.filters['methodName_GET_COUNT'] = lambda value: value[0].lower() + value[1:] + 'Count'
-        self.env.filters['methodName_SET'] = lambda value: value[0].lower() + value[1:]
-        self.env.filters['methodName_SET_RAW'] = lambda value: value[0].lower() + value[1:] + 'Raw'
-        self.env.filters['methodName_IS_PRESENT'] = lambda value: 'is' + value[0].upper() + value[1:] + 'Present'
-        self.env.filters['methodName_RESET'] = lambda value: value[0].lower() + value[1:] + 'Reset'
-        ''' convert a keyword to native type or value '''
-        self.env.filters['cpp']  = Generator.filterCpp
+        self.env.filters['format_class_name'] = lambda value: value[0].upper() + value[1:]
+        self.env.filters['format_method_name_get'] = lambda value: value[0].lower() + value[1:]
+        self.env.filters['format_method_name_set'] = lambda value: value[0].lower() + value[1:]
+        self.env.filters['format_method_name_is_present'] = lambda value: 'is' + value[0].upper() + value[1:] + 'Present'
+        self.env.filters['format_method_name_reset'] = lambda value: value[0].lower() + value[1:] + 'Reset'
+        self.env.filters['format_method_name_length'] = lambda value: value[0].lower() + value[1:] + 'Length'
+        self.env.filters['format_method_name_get_count'] = lambda value: value[0].lower() + value[1:] + 'Count'
+        self.env.filters['format_constant_name'] = lambda value: 'k' + value[0].upper() + value[1:]
+        self.env.filters['replace_keyword']  = Generator.filterReplaceKeword
 
     @staticmethod
-    def filterCpp(value: str) -> str:
+    def filterReplaceKeword(value: str) -> str:
         return {
             'int8':         'std::int8_t',
             'int16':        'std::int16_t',
