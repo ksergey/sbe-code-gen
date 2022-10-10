@@ -179,16 +179,19 @@ struct FieldDescription {
         if constexpr (FieldPresence() == Presence::CONSTANT || FieldPresence() == Presence::REQUIRED) {
             return true;
         } else {
+            constexpr auto nullValue = static_cast<typename TypeDescription::value_type>(typename Traits::null_value_type());
             if constexpr (TypeDescription::length == 1) {
                 if constexpr (std::is_floating_point_v<typename TypeDescription::value_type>) {
-                    auto const nullValue = typename Traits::null_value_type();
-                    auto const value = load(context);
-                    return (nullValue != nullValue && value != value) || (value != nullValue);
+                    if constexpr (std::isnan(nullValue)) {
+                        return !std::isnan(load(context));
+                    } else {
+                        return load(context) != nullValue;
+                    }
                 } else {
-                    return load(context) != typename Traits::null_value_type();
+                    return load(context) != nullValue;
                 }
             } else {
-                return load(context).front() != typename Traits::null_value_type();
+                return load(context).front() != nullValue;
             }
         }
     }
