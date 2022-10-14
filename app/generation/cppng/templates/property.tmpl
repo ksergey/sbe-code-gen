@@ -1,7 +1,29 @@
 {% macro define(class_name, fields) %}
+template<std::size_t N>
+[[nodiscard]] decltype(auto) field() const noexcept {
     {% for field in fields %}
-        {{- define_property(class_name, field) }}
-    {% endfor %}
+    {% if loop.first %}{{ '    ' }}{% else %}{{ ' ' }}{% endif %}if constexpr (N == {{ loop.index0 }}) {
+        return {{ define_property(class_name, field) }};
+    } else
+    {%- endfor %}
+ {
+        static_assert(N + 1 == 0, "field not found");
+    }
+}
+
+template<FixedString N>
+[[nodiscard]] decltype(auto) field() const noexcept {
+    using namespace std::string_view_literals;
+
+    {% for field in fields %}
+    {% if loop.first %}{{ '    ' }}{% else %}{{ ' ' }}{% endif %}if constexpr (static_cast<std::string_view>(N) == "{{ field.name }}"sv) {
+        return this->field<{{ loop.index0 }}>();
+    } else
+    {%- endfor %}
+ {
+        static_assert(sizeof(N) + 1 == 0, "field not found");
+    }
+}
 {% endmacro %}
 
 {% macro define_property(class_name, entry) %}
@@ -28,7 +50,15 @@
 {%- elif entry.token == 'data' %}
     {{- define_property_data(class_name, entry) -}}
 {%- endif %}
-{% endmacro %}
+{%- endmacro %}
+
+{% macro escape_string(var) %}
+"{{ var }}"
+{%- endmacro %}
+
+{% macro escape_char(var) %}
+'{{ var }}'
+{%- endmacro %}
 
 {% macro define_property_type(class_name, entry) -%}
 {%- if entry.token == 'field' %}
@@ -37,227 +67,69 @@
     {% set type = entry -%}
 {%- endif %}
 
-{%- if type.length == 1 %}
-    {{- define_property_type_single(class_name, entry) }}
-{%- elif type.length > 1 %}
-    {{- define_property_type_array(class_name, entry) }}
+{%- set Name = escape_string(entry.name) -%}
+{%- set T = type.primitiveType | replace_keyword -%}
+{%- set Length = "Length<" ~ type.length ~ ">" -%}
+{%- set Offset = "Offset<" ~ entry.offset ~ ">" -%}
+
+{%- if entry.presence == 'constant' %}
+    {%- if type.primitiveType == 'char' %}
+        {%- if type.length != 1 %}
+            {% set CValue = "Value<FixedString(" ~ escape_string(type.constValue) ~ ")>" %}
+        {%- else %}
+            {% set CValue = "Value<" ~ escape_char(type.constValue) ~ ">" %}
+        {%- endif %}
+    {%- else %}
+        {% set CValue = "Value<" ~ type.constValue ~ ">" %}
+    {%- endif %}
+ConstantField<{{ Name }}, {{ T }}, {{ Length }}, {{ CValue }}>()
+{%- elif entry.presence == 'required' %}
+RequiredField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}>(buffer_, offset_)
+{%- else %}
+    {%- if type.primitiveType == 'char' %}
+        {% set Null = "Value<" ~ escape_char(type.nullValue) ~ ">" %}
+    {%- else %}
+        {% set Null = "Value<" ~ type.nullValue | replace_keyword ~ ">" %}
+    {%- endif %}
+OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffer_, offset_)
 {%- endif %}
 {%- endmacro %}
 
-{% macro define_property_type_single(class_name, entry) %}
-
-{%- if entry.token == 'field' %}
-    {% set type = entry.type -%}
-{%- else %}
-    {% set type = entry -%}
-{%- endif %}
-{%- set method_name = entry.name -%}
-{%- set underlying_type = type.primitiveType | replace_keyword -%}
-
-{%- if entry.presence == 'constant' %}
-[[nodiscard]] static constexpr {{ underlying_type }} {{ method_name | format_method_name_get }}() noexcept {
-    {% if type.primitiveType == 'char' %}
-    return '{{ type.constValue }}';
-    {% else %}
-    return {{ type.constValue }};
-    {% endif %}
-}
-
-{% endif %}
-
-{%- if entry.presence == 'required' or entry.presence == 'optional' %}
-[[nodiscard]] {{ underlying_type }} {{ method_name | format_method_name_get }}() const noexcept {
-    return *std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }});
-}
-
-{% endif %}
-
-{%- if entry.presence != 'constant' %}
-{{ class_name }}& {{ method_name | format_method_name_get }}({{ underlying_type }} value) noexcept {
-    *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }}) = value;
-    return *this;
-}
-
-{% endif %}
-
-{%- if entry.presence == 'optional' %}
-{{ class_name }}& {{ method_name | format_method_name_reset }}() noexcept {
-    return {{ method_name | format_method_name_set }}({{ type.nullValue | replace_keyword }});
-}
-
-{% endif %}
-
-{%- if entry.presence == 'required' or entry.presence == 'constant' %}
-[[nodiscard]] static constexpr bool {{ method_name | format_method_name_is_present }}() noexcept {
-    return true;
-}
-{% endif %}
-
-{%- if entry.presence == 'optional' %}
-[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    {% if type.primitiveType == 'double' or type.primitiveType == 'float' %}
-    constexpr {{ underlying_type }} null = {{ type.nullValue | replace_keyword }};
-    constexpr {{ underlying_type }} value = {{ method_name | format_method_name_get() }};
-    return ((null != null && value != value) || (value != null));
-    {% else %}
-    return {{ type.nullValue | replace_keyword }} != {{ method_name | format_method_name_get }}();
-    {% endif %}
-}
-{% endif %}
-{% endmacro %}
-
-{% macro define_property_type_array(class_name, entry) %}
-
-{%- if entry.token == 'field' %}
-    {%- set type = entry.type -%}
-{%- else %}
-    {%- set type = entry -%}
-{%- endif %}
-{%- set method_name = entry.name -%}
-{%- set underlying_type = type.primitiveType | replace_keyword -%}
-{%- if type.primitiveType == 'char' %}
-    {% set value_type = 'std::string_view' -%}
-{%- else %}
-    {% set value_type = 'std::span<' ~ underlying_type ~ ' const>' -%}
-{%- endif %}
-
-{%- if entry.presence == 'constant' %}
-[[nodiscard]] static constexpr {{ value_type }} {{ method_name | format_method_name_get }}() noexcept {
-    {% if type.primitiveType == 'char' %}
-    return "{{ type.constValue }}";
-    {% else %}
-    assert(false, "not implemeted");
-    {% endif %}
-}
-
-{% endif %}
-
-{%- if entry.presence == 'required' or entry.presence == 'optional' %}
-[[nodiscard]] {{ value_type }} {{ method_name | format_method_name_get }}() const noexcept {
-    return {{ value_type }}(std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }}), {{ type.length }});
-}
-
-{% endif %}
-
-{%- if entry.presence != 'constant' and type.primitiveType != 'char' %}
-{{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
-    if (value.size() != {{ type.length }}) [[unlikely]] {
-        # TODO
-        throw std::runtime_error("...");
-    }
-    std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), {{ underlying_type }} * {{ type.length }});
-    return *this;
-}
-
-{% endif %}
-
-{%- if entry.presence != 'constant' and type.primitiveType == 'char' %}
-{{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
-    std::size_t const lengthToCopy = std::min<std::size_t>(value.size(), {{ type.length }});
-    std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), lengthToCopy);
-    for (std::size_t i = lengthToCopy; i < {{ type.length }}; ++i) {
-        *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }} + i) = {{ type.nullValue | replace_keyword }};
-    }
-    return *this;
-}
-
-{% endif %}
-
-{%- if entry.presence == 'optional' %}
-{{ class_name }}& {{ method_name | format_method_name_reset }}() noexcept {
-    return {{ method_name | format_method_name_set }}({{ value_type }}());
-}
-
-{% endif %}
-
-{%- if entry.presence == 'required' or entry.presence == 'constant' %}
-[[nodiscard]] static constexpr bool {{ method_name | format_method_name_is_present }}() noexcept {
-    return true;
-}
-{% endif %}
-
-{%- if entry.presence == 'optional' %}
-[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    return {{ type.nullValue | replace_keyword }} != {{ method_name | format_method_name_get }}().front();
-}
-{% endif %}
-{% endmacro %}
-
 {% macro define_property_composite(class_name, entry) %}
-
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
 {%- else %}
     {% set type = entry -%}
 {%- endif %}
 {%- set composite_class_name = type.name | format_class_name -%}
-{%- set method_name = entry.name -%}
-{%- set composite_first_entry_method_name = type.containedTypes[0].name -%}
-
-[[nodiscard]] {{ composite_class_name }} {{ method_name | format_method_name_get }}() {
-    return {{ composite_class_name }}(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_);
-}
-
-[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() {
-    return {{ method_name | format_method_name_get }}().{{ composite_first_entry_method_name | format_method_name_is_present }}();
-}
-{% endmacro %}
+{{ composite_class_name }}(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_)
+{%- endmacro %}
 
 {% macro define_property_enum(class_name, entry) %}
 {%- if entry.token == 'field' %}
-    {%- set type = entry.type -%}
+    {% set type = entry.type -%}
 {%- else %}
-    {%- set type = entry -%}
+    {% set type = entry -%}
 {%- endif %}
-{%- if entry.valueRef != None %}
-    {%- set const_value = entry.valueRef -%}
-{%- else %}
-    {%- set const_value = type.const_value -%}
-{%- endif %}
-{%- set enum_class_name = type.name | format_class_name -%}
-{%- set method_name = entry.name -%}
-{%- set underlying_type = type.encodingType | replace_keyword -%}
+
+{%- set Name = escape_string(entry.name) -%}
+{%- set T = type.name | format_class_name -%}
+{%- set Length = "Length<1>" -%}
+{%- set Offset = "Offset<" ~ entry.offset ~ ">" -%}
 
 {%- if entry.presence == 'constant' %}
-[[nodiscard]] static constexpr {{ enum_class_name }} {{ method_name | format_method_name_get }}() noexcept {
-    return {{ enum_class_name }}::{{ const_value.split('.')[1] }};
-}
-
-{% endif %}
-
-{%- if entry.presence == 'required' or entry.presence == 'optional' %}
-[[nodiscard]] {{ enum_class_name }} {{ method_name | format_method_name_get }}() const noexcept {
-    return {{ enum_class_name }}(*std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }}));
-}
-
-{% endif %}
-
-{%- if entry.presence != 'constant' %}
-{{ class_name }}& {{ method_name | format_method_name_get }}({{ enum_class_name }} value) noexcept {
-    *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }}) = static_cast<{{ underlying_type }}>(value);
-    return *this;
-}
-
-{% endif %}
-
-{%- if entry.presence == 'optional' %}
-{{ class_name }}& {{ method_name | format_method_name_reset }}() noexcept {
-    return {{ method_name | format_method_name_set }}({{ enum_class_name }}::NULL_VALUE);
-}
-
-{% endif %}
-
-{%- if entry.presence == 'required' or entry.presence == 'constant' %}
-[[nodiscard]] static constexpr bool {{ method_name | format_method_name_is_present }}() noexcept {
-    return true;
-}
-{% endif %}
-
-{%- if entry.presence == 'optional' %}
-[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    return {{ enum_class_name }}::NULL_VALUE != {{ method_name | format_method_name_get }}();
-}
-{% endif %}
+    {%- if entry.valueRef != None %}
+        {% set CValue = "Value<" ~ T ~ "::" ~ entry.valueRef.split('.')[1] ~ ">" %}
+    {%- else %}
+        {% set CValue = "Value<" ~ T ~ "::" ~ type.constValue.split('.')[1] ~ ">" %}
+    {%- endif %}
+ConstantField<{{ Name }}, {{ T }}, {{ Length }}, {{ CValue }}>()
+{%- elif entry.presence == 'required' %}
+RequiredField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}>(buffer_, offset_)
+{%- else %}
+    {% set Null = "Value<" ~ T ~ "::NULL_VALUE>" %}
+OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffer_, offset_)
+{%- endif %}
 {% endmacro %}
 
 {% macro define_property_set(class_name, entry) %}
