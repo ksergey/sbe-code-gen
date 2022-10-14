@@ -27,94 +27,106 @@ template <std::size_t N> struct FixedString {
 
 template <std::size_t N> FixedString(char const (&)[N])->FixedString<N - 1>;
 
-struct None {
-  struct non_valid_value {};
-  static constexpr auto value = non_valid_value();
-};
-
-enum class PresenceAttr { REQUIRED, OPTIONAL, CONSTANT };
-
 template <std::size_t N> using Length = std::integral_constant<std::size_t, N>;
 template <std::size_t N> using Offset = std::integral_constant<std::size_t, N>;
-template <PresenceAttr N> using Presence = std::integral_constant<PresenceAttr, N>;
 
-template <typename T, typename Length> struct Type { static_assert(sizeof(T) + 1 == 0, "type deduction not defined"); };
+template <typename T, typename Length, class = void> struct Type;
 template <typename T> struct Type<T, Length<1>> {
   using value_type = T;
   using underlying_type = T;
   using length_type = Length<1>;
 };
-template <std::size_t N> struct Type<char, Length<N>> {
+template <std::size_t N> struct Type<char, Length<N>, std::enable_if_t<(N != 1)>> {
   using value_type = std::string_view;
   using underlying_type = char;
   using length_type = Length<N>;
 };
 template <> struct Type<std::uint8_t, Length<0>> : Type<char, Length<0>> {};
 
+template <class T, class Length> concept ArrayLike = (Length::value > 1);
+template <class T, class Length>
+concept StringLike = std::is_same_v<typename Type<T, Length>::value_type, std::string_view>;
+template <class T, class Length> concept SingleElementLike = (Length::value == 1);
+
 template <auto N> struct Value { static constexpr auto value = N; };
 
-template <typename T, typename Length, typename NullValue = None, typename MinValue = None, typename MaxValue = None,
-          typename CValue = None>
-struct TypeDescription {
+template <FixedString Name, typename T, typename Length, typename CValue> struct ConstantField {
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
-  [[nodiscard]] static constexpr auto length() noexcept { return static_cast<std::size_t>(Length::value); }
-
-  [[nodiscard]] static constexpr auto min() noexcept { return static_cast<underlying_type>(MinValue::value); }
-
-  [[nodiscard]] static constexpr auto max() noexcept { return static_cast<underlying_type>(MaxValue::value); }
-
-  [[nodiscard]] static constexpr auto null() noexcept { return static_cast<underlying_type>(NullValue::value); }
-
-  [[nodiscard]] static constexpr auto cvalue() noexcept { return static_cast<value_type>(CValue::value); }
-
-  [[nodiscard]] static constexpr auto isNull(value_type value) noexcept {
-    if constexpr (length() == 1) {
-      if constexpr (std::is_floating_point_v<value_type>) {
-        if constexpr (std::isnan(null())) {
-          return std::isnan(value);
-        }
-      }
-      return value == null();
-    } else if constexpr (length() > 1) {
-      return *std::begin(value) == null();
-    } else {
-      return false;
-    }
-  }
-};
-
-template <typename T, class Count> struct CompositeDescription {
-  using value_type = T;
-
-  [[nodiscard]] static constexpr auto count() noexcept { return static_cast<std::size_t>(Count::value); }
-};
-
-template <typename T, typename NullValue = None> struct EnumDescription {
-  using value_type = T;
-  using underlying_type = std::underlying_type_t<typename T::enumerated>;
-
-  [[nodiscard]] static constexpr auto null() noexcept { return static_cast<value_type>(NullValue::value); }
-
-  [[nodiscard]] static constexpr auto isNull(value_type value) noexcept { return value == null(); }
-};
-
-template <typename T> struct SetDescription {
-  using value_type = T;
-  using underlying_type = std::decay_t<decltype(std::declval<T>().raw())>;
-};
-
-template <FixedString Name, class T, class Presence, class CValue = None> struct FieldDescription {
   [[nodiscard]] static constexpr auto name() noexcept { return static_cast<std::string_view>(Name); }
-  [[nodiscard]] static constexpr auto presence() noexcept { return Presence::value; }
-  [[nodiscard]] static constexpr auto cvalue() noexcept {
-    if constexpr (std::is_same_v<CValue, None>) {
-      return T::cvalue();
+
+  [[nodiscard]] static constexpr auto present() noexcept { return true; }
+
+  [[nodiscard]] static constexpr auto value() noexcept { return static_cast<value_type>(CValue::value); }
+};
+
+struct Trim {};
+static constexpr auto trim = Trim();
+
+template <FixedString Name, typename T, typename Length, typename Offset> class RequiredField {
+private:
+  char *buffer_ = nullptr;
+  std::size_t offset_ = 0;
+
+public:
+  using value_type = typename Type<T, Length>::value_type;
+  using underlying_type = typename Type<T, Length>::underlying_type;
+
+  // clang-format off
+  constexpr RequiredField() = default;
+  constexpr RequiredField(char *buffer, std::size_t offset) noexcept
+    : buffer_(buffer), offset_(offset)
+  {}
+
+  [[nodiscard]] static constexpr auto name() noexcept { return static_cast<std::string_view>(Name); }
+  // clang-format on
+
+  [[nodiscard]] static constexpr auto present() noexcept { return true; }
+
+  [[nodiscard]] auto value() const noexcept requires(SingleElementLike<T, Length>) {
+    return value_type(*dataBeginPtr());
+  }
+
+  [[nodiscard]] auto value() const noexcept requires(ArrayLike<T, Length>) {
+    return value_type(dataBeginPtr(), Length::value);
+  }
+
+  void value(value_type value) noexcept requires(SingleElementLike<T, Length>) {
+    std::memcpy(this->dataBeginPtr(), &value, sizeof(value));
+  }
+
+  void value(value_type value) noexcept requires(ArrayLike<T, Length>) {
+    std::memcpy(this->dataBeginPtr(), value.data(), Length::value * sizeof(underlying_type));
+  }
+
+protected:
+  [[nodiscard]] underlying_type const *dataBeginPtr() const noexcept {
+    return std::bit_cast<underlying_type const *>(buffer_ + offset_ + Offset::value);
+  }
+
+  [[nodiscard]] underlying_type *dataBeginPtr() noexcept {
+    return std::bit_cast<underlying_type *>(buffer_ + offset_ + Offset::value);
+  }
+};
+
+template <FixedString Name, typename T, typename Length, typename Offset, typename Null>
+class OptionalField : public RequiredField<Name, T, Length, Offset> {
+public:
+  using value_type = typename Type<T, Length>::value_type;
+  using underlying_type = typename Type<T, Length>::underlying_type;
+
+  using RequiredField<Name, T, Length, Offset>::RequiredField;
+
+  [[nodiscard]] constexpr auto present() noexcept {
+    auto const value = *this->dataBeginPtr();
+    if constexpr (std::is_floating_point_v<value_type> && std::isnan(Null::value)) {
+      return std::isnan(value);
     } else {
-      return static_cast<T::value_type>(CValue::value);
+      return value != Null::value;
     }
   }
 };
+
 {{ '' -}}
 {% endblock %}
