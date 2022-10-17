@@ -27,14 +27,17 @@ private:
     std::uint16_t actingVersion_ = 0;
 
 public:
+    using aggregate_type = void;
+    using sequence_type = void;
+
     {{ group_class_name }}(char* buffer, std::size_t* pos, std::uint16_t actingVersion,
             std::size_t bufferLength)
     {
         {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
         buffer_ = buffer;
         bufferLength_ = bufferLength;
-        blockLength_ = dimensions.blockLength();
-        count_ = dimensions.numInGroup();
+        blockLength_ = dimensions.field<"blockLength">().value();
+        count_ = dimensions.field<"numInGroup">().value();
         index_ = 0;
         actingVersion_ = actingVersion;
         initialPosition_ = *pos;
@@ -52,8 +55,8 @@ public:
         buffer_ = buffer;
         bufferLength_ = bufferLength;
         {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
-        dimensions.blockLength(sbeBlockLength());
-        dimensions.numInGroup(count);
+        dimensions.field<"blockLength">().value(sbeBlockLength());
+        dimensions.field<"numInGroup">().value(count);
         index_ = 0;
         count_ = count;
         blockLength_ = sbeBlockLength();
@@ -106,7 +109,7 @@ public:
     std::size_t resetCountToIndex() {
         count_ = index_;
         {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
-        dimensions.numInGroup(count_);
+        dimensions.field<"numInGroup">().value(count_);
         return count_;
     }
 
@@ -116,6 +119,9 @@ public:
     {{- '' -}}
 private:
     [[nodiscard]] std::size_t *sbePositionPtr() noexcept {
+        return positionPtr_;
+    }
+    [[nodiscard]] std::size_t const* sbePositionPtr() const noexcept {
         return positionPtr_;
     }
 };
