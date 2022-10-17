@@ -51,6 +51,8 @@ template <class T, class Length> concept SingleElementLike = (Length::value == 1
 template <auto N> struct Value { static constexpr auto value = N; };
 
 template <FixedString Name, typename T, typename Length, typename CValue> struct ConstantField {
+  using field_type = void;
+
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
@@ -59,6 +61,8 @@ template <FixedString Name, typename T, typename Length, typename CValue> struct
   [[nodiscard]] static constexpr auto present() noexcept { return true; }
 
   [[nodiscard]] static constexpr auto value() noexcept { return static_cast<value_type>(CValue::value); }
+
+  [[nodiscard]] constexpr operator value_type() const noexcept { return this->value(); }
 };
 
 struct Trim {};
@@ -70,6 +74,8 @@ private:
   std::size_t offset_ = 0;
 
 public:
+  using field_type = void;
+
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
@@ -100,6 +106,13 @@ public:
     std::memcpy(this->dataBeginPtr(), value.data(), Length::value * sizeof(underlying_type));
   }
 
+  [[nodiscard]] constexpr operator value_type() const noexcept { return this->value(); }
+
+  constexpr RequiredField& operator=(value_type value) noexcept {
+    this->value(value);
+    return *this;
+  }
+
 protected:
   [[nodiscard]] underlying_type const *dataBeginPtr() const noexcept {
     return std::bit_cast<underlying_type const *>(buffer_ + offset_ + Offset::value);
@@ -113,10 +126,13 @@ protected:
 template <FixedString Name, typename T, typename Length, typename Offset, typename Null>
 class OptionalField : public RequiredField<Name, T, Length, Offset> {
 public:
+  using field_type = void;
+
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
   using RequiredField<Name, T, Length, Offset>::RequiredField;
+  using RequiredField<Name, T, Length, Offset>::operator=;
 
   [[nodiscard]] constexpr auto present() noexcept {
     auto const value = *this->dataBeginPtr();
@@ -125,6 +141,11 @@ public:
     } else {
       return value != Null::value;
     }
+  }
+
+  constexpr OptionalField& operator=(std::nullptr_t) noexcept {
+    *this->dataBeginPtr() = Null::value;
+    return *this;
   }
 };
 
