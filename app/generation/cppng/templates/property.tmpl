@@ -57,7 +57,11 @@ template<FixedString N>
 {%- endmacro %}
 
 {% macro escape_char(var) %}
+{%- if var | length == 1 %}
 '{{ var }}'
+{%- else %}
+'{{ var | replace_keyword }}'
+{%- endif %}
 {%- endmacro %}
 
 {% macro define_property_type(class_name, entry) -%}
@@ -130,7 +134,7 @@ RequiredField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}>(buffer_, offset_)
     {% set Null = "Value<" ~ T ~ "::NULL_VALUE>" %}
 OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffer_, offset_)
 {%- endif %}
-{% endmacro %}
+{%- endmacro %}
 
 {% macro define_property_set(class_name, entry) %}
 {%- if entry.token == 'field' %}
@@ -138,38 +142,18 @@ OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffe
 {%- else %}
     {% set type = entry -%}
 {%- endif %}
-{%- set set_class_name = entry.name | format_class_name -%}
-{%- set method_name = entry.name -%}
-{%- set underlying_type = type.encodingType | replace_keyword -%}
 
-[[nodiscard]] {{ set_class_name }} {{ method_name | format_method_name_get }}() const {
-    return {{ set_class_name }}(*std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }}));
-}
-
-{{ class_name }}& {{ method_name | format_method_name_get }}({{ set_class_name }} value) noexcept {
-    *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }}) = static_cast<{{ underlying_type }}>(value);
-    return *this;
-}
-
-[[nodiscard]] static constexpr bool {{ method_name | format_method_name_is_present }}() noexcept {
-    return true;
-}
-{% endmacro %}
+{%- set Name = escape_string(entry.name) -%}
+{%- set T = entry.name | format_class_name -%}
+{%- set Length = "Length<1>" -%}
+{%- set Offset = "Offset<" ~ entry.offset ~ ">" -%}
+RequiredField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}>(buffer_, offset_)
+{%- endmacro %}
 
 {% macro define_property_group(class_name, entry) %}
 {%- set group_class_name = entry.name | format_class_name -%}
-{%- set dimensions_type_class_name = entry.dimensionType.name | format_class_name -%}
-{%- set method_name = entry.name -%}
-{%- set num_in_group_type = (entry.dimensionType.containedTypes | selectattr('name', 'equalto', 'numInGroup') | first) -%}
-
-[[nodiscard]] {{ group_class_name }} {{ method_name | format_method_name_get }}() {
-    return {{ group_class_name }}(buffer_, sbePositionPtr(), actingVersion_, bufferLength_);
-}
-
-[[nodiscard]] {{ group_class_name }} {{ method_name | format_method_name_get_count }}(std::size_t count) {
-    return {{ group_class_name }}(buffer_, count, sbePositionPtr(), actingVersion_, bufferLength_);
-}
-{% endmacro %}
+{{ group_class_name }}(buffer_, const_cast<std::size_t*>(sbePositionPtr()), actingVersion_, bufferLength_)
+{%- endmacro %}
 
 {% macro define_property_data(class_name, entry) %}
 {%- set type = entry.type -%}
@@ -185,32 +169,5 @@ OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffe
 {%- else %}
     {%- set value_type = 'std::span<' ~ data_underlying_type ~ ' const>' -%}
 {%- endif %}
-
-[[nodiscard]] std::size_t {{ method_name | format_method_name_length }}() const noexcept {
-    return *std::bit_cast<{{ length_underlying_type }} const*>(buffer_ + sbePosition());
-}
-
-[[nodiscard]] {{ value_type }} {{ method_name | format_method_name_get }}() noexcept {
-    {{ length_underlying_type }} const length = *std::bit_cast<{{ length_underlying_type }} const*>(buffer_ + sbePosition());
-    {{ data_underlying_type }} const* begin = std::bit_cast<{{ data_underlying_type }} const*>(buffer_ + sbePosition() + sizeof(length));
-    sbePosition(sbePosition() + sizeof(length) + length);
-    return {{ value_type }}(begin, length);
-}
-
-{{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
-    auto const lengthPosition = sbePosition();
-    sbePosition(lengthPosition + sizeof({{ length_underlying_type }}));
-    *std::bit_cast<{{ length_underlying_type }}*>(buffer_ + lengthPosition) = value.size();
-    if (value.size() > 0) [[likely]] {
-        auto const pos = sbePosition();
-        auto const size = value.size() * sizeof({{ data_underlying_type }});
-        sbePosition(pos + size);
-        std::memcpy(buffer_ + pos, value.data(), size);
-    }
-    return *this;
-}
-
-[[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    return {{ method_name | format_method_name_length }}() > 0;
-}
-{% endmacro %}
+Value<0>(/* TODO */)
+{%- endmacro %}
