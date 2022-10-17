@@ -18,6 +18,8 @@ private:
     std::uint16_t actingVersion_ = 0;
 
 public:
+    using aggregate_type = void;
+
     {{ message_class_name }}() = default;
 
     {{ message_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
@@ -49,12 +51,11 @@ public:
     }
 
     {{ message_class_name }}& wrapAndApplyHeader(char* buffer, std::size_t offset, std::size_t bufferLength) {
-        {{ header_class_name }}(buffer, offset, bufferLength, sbeSchemaVersion())
-            .blockLength(sbeBlockLength())
-            .templateId(sbeTemplateId())
-            .schemaId(sbeSchemaId())
-            .version(sbeSchemaVersion())
-        ;
+        auto header = {{ header_class_name }}(buffer, offset, bufferLength, sbeSchemaVersion());
+        header.field<"blockLength">().value(sbeBlockLength());
+        header.field<"templateId">().value(sbeTemplateId());
+        header.field<"schemaId">().value(sbeSchemaId());
+        header.field<"version">().value(sbeSchemaVersion());
 
         return *this = {{ message_class_name }}(buffer, offset + {{ header_class_name }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
     }
@@ -127,7 +128,10 @@ public:
     {{ property.define(message_class_name, message.fields) | indent }}
     {{- '' -}}
 private:
-    std::size_t* sbePositionPtr() noexcept {
+    [[nodiscard]] std::size_t* sbePositionPtr() noexcept {
+        return &position_;
+    }
+    [[nodiscard]] std::size_t const* sbePositionPtr() const noexcept {
         return &position_;
     }
 };
