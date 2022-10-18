@@ -14,8 +14,8 @@ private:
     std::uint16_t actingVersion_ = 0;
 
 public:
-    using aggregate_type = void; 
-	
+    using aggregate_type = void;
+
     {{ composite_class_name }}() = default;
 
     {{ composite_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
@@ -73,6 +73,10 @@ public:
 
     [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
         return {{ schema.version }};
+    }
+
+    [[nodiscard]] auto present() const noexcept {
+        return {{ property.define_property(composite_class_name, type.containedTypes | first) }}.present();
     }
 
     {{ property.define(composite_class_name, type.containedTypes) | indent }}

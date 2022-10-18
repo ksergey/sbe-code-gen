@@ -28,7 +28,6 @@ template <std::size_t N> struct FixedString {
 template <std::size_t N> FixedString(char const (&)[N])->FixedString<N - 1>;
 
 template <std::size_t N> using Length = std::integral_constant<std::size_t, N>;
-template <std::size_t N> using Offset = std::integral_constant<std::size_t, N>;
 
 template <typename T, typename Length, class = void> struct Type;
 template <typename T> struct Type<T, Length<1>> {
@@ -51,8 +50,6 @@ template <class T, class Length> concept SingleElementLike = (Length::value == 1
 template <auto N> struct Value { static constexpr auto value = N; };
 
 template <FixedString Name, typename T, typename Length, typename CValue> struct ConstantField {
-  using field_type = void;
-
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
@@ -61,21 +58,14 @@ template <FixedString Name, typename T, typename Length, typename CValue> struct
   [[nodiscard]] static constexpr auto present() noexcept { return true; }
 
   [[nodiscard]] static constexpr auto value() noexcept { return static_cast<value_type>(CValue::value); }
-
-  [[nodiscard]] constexpr operator value_type() const noexcept { return this->value(); }
 };
 
-struct Trim {};
-static constexpr auto trim = Trim();
-
-template <FixedString Name, typename T, typename Length, typename Offset> class RequiredField {
+template <FixedString Name, typename T, typename Length> class RequiredField {
 private:
   char *buffer_ = nullptr;
   std::size_t offset_ = 0;
 
 public:
-  using field_type = void;
-
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
@@ -106,33 +96,23 @@ public:
     std::memcpy(this->dataBeginPtr(), value.data(), Length::value * sizeof(underlying_type));
   }
 
-  [[nodiscard]] constexpr operator value_type() const noexcept { return this->value(); }
-
-  constexpr RequiredField& operator=(value_type value) noexcept {
-    this->value(value);
-    return *this;
-  }
-
 protected:
   [[nodiscard]] underlying_type const *dataBeginPtr() const noexcept {
-    return std::bit_cast<underlying_type const *>(buffer_ + offset_ + Offset::value);
+    return std::bit_cast<underlying_type const *>(buffer_ + offset_);
   }
 
   [[nodiscard]] underlying_type *dataBeginPtr() noexcept {
-    return std::bit_cast<underlying_type *>(buffer_ + offset_ + Offset::value);
+    return std::bit_cast<underlying_type *>(buffer_ + offset_);
   }
 };
 
-template <FixedString Name, typename T, typename Length, typename Offset, typename Null>
-class OptionalField : public RequiredField<Name, T, Length, Offset> {
+template <FixedString Name, typename T, typename Length, typename Null>
+class OptionalField : public RequiredField<Name, T, Length> {
 public:
-  using field_type = void;
-
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
-  using RequiredField<Name, T, Length, Offset>::RequiredField;
-  using RequiredField<Name, T, Length, Offset>::operator=;
+  using RequiredField<Name, T, Length>::RequiredField;
 
   [[nodiscard]] constexpr auto present() noexcept {
     auto const value = *this->dataBeginPtr();
@@ -143,11 +123,16 @@ public:
     }
   }
 
-  constexpr OptionalField& operator=(std::nullptr_t) noexcept {
-    *this->dataBeginPtr() = Null::value;
-    return *this;
+  using RequiredField<Name, T, Length>::value;
+
+  void value(std::nullptr_t) noexcept {
+    std::memcpy(this->dataBeginPtr(), &Null::value, sizeof(underlying_type));
   }
 };
 
+template<class T>
+constexpr auto isAggregate = requires { typename T::aggregate_type; };
+template<class T>
+constexpr auto isSequence = requires { typename T::sequence_type; };
 {{ '' -}}
 {% endblock %}

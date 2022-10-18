@@ -45,6 +45,7 @@ public:
         *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
     }
 
+#if 0
     {{ group_class_name }}(char* buffer, std::size_t count, std::size_t* pos, std::uint16_t actingVersion,
             std::size_t bufferLength)
     {
@@ -64,6 +65,22 @@ public:
         initialPosition_ = *pos;
         positionPtr_ = pos;
         *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
+    }
+#endif
+
+    {{ group_class_name }}& reset(std::size_t count) {
+        if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
+            throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
+        }
+
+        count_ = count;
+        blockLength_ = sbeBlockLength();
+
+        {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
+        dimensions.field<"blockLength">().value(sbeBlockLength());
+        dimensions.field<"numInGroup">().value(count_);
+
+        return *this;
     }
 
     [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {

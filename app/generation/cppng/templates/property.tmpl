@@ -1,29 +1,50 @@
 {% macro define(class_name, fields) %}
+[[nodiscard]] static constexpr std::size_t fieldsCount() noexcept { return {{ fields | length }}; }
+
 template<std::size_t N>
 [[nodiscard]] decltype(auto) field() const noexcept {
     {% for field in fields %}
-    {% if loop.first %}{{ '    ' }}{% else %}{{ ' ' }}{% endif %}if constexpr (N == {{ loop.index0 }}) {
+    if constexpr (N == {{ loop.index0 }}) {
         return {{ define_property(class_name, field) }};
-    } else
+    } else {{- '' -}}
     {%- endfor %}
  {
-        static_assert(N + 1 == 0, "field not found");
+        static_assert(N + 1 == 0, "invalid template argument");
     }
 }
+
+{#
+{% if fields | selectattr('token', 'equalto', 'group') | list | length > 0 -%}
+template<std::size_t N>
+[[nodiscard]] decltype(auto) field(std::size_t count) noexcept {
+    {% for field in fields %}
+        {% if field.token == 'group' %}
+    if constexpr (N == {{ loop.index0 }}) {
+        return {{ define_property_group_init(class_name, field) }};
+    } else {{- '' -}}
+        {% endif %}
+    {%- endfor %}
+ {
+        static_assert(N + 1 == 0, "invalid template argument");
+    }
+}
+{% endif %}
+#}
 
 template<FixedString N>
 [[nodiscard]] decltype(auto) field() const noexcept {
     using namespace std::string_view_literals;
 
     {% for field in fields %}
-    {% if loop.first %}{{ '    ' }}{% else %}{{ ' ' }}{% endif %}if constexpr (static_cast<std::string_view>(N) == "{{ field.name }}"sv) {
+    if constexpr (static_cast<std::string_view>(N) == "{{ field.name }}"sv) {
         return this->field<{{ loop.index0 }}>();
-    } else
+    } else {{- '' -}}
     {%- endfor %}
  {
-        static_assert(sizeof(N) + 1 == 0, "field not found");
+        static_assert(sizeof(N) + 1 == 0, "invalid template argument");
     }
 }
+
 {% endmacro %}
 
 {% macro define_property(class_name, entry) %}
@@ -74,7 +95,6 @@ template<FixedString N>
 {%- set Name = escape_string(entry.name) -%}
 {%- set T = type.primitiveType | replace_keyword -%}
 {%- set Length = "Length<" ~ type.length ~ ">" -%}
-{%- set Offset = "Offset<" ~ entry.offset ~ ">" -%}
 
 {%- if entry.presence == 'constant' %}
     {%- if type.primitiveType == 'char' %}
@@ -88,14 +108,14 @@ template<FixedString N>
     {%- endif %}
 ConstantField<{{ Name }}, {{ T }}, {{ Length }}, {{ CValue }}>()
 {%- elif entry.presence == 'required' %}
-RequiredField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}>(buffer_, offset_)
+RequiredField<{{ Name }}, {{ T }}, {{ Length }}>(buffer_, offset_ + {{ entry.offset }})
 {%- else %}
     {%- if type.primitiveType == 'char' %}
         {% set Null = "Value<" ~ escape_char(type.nullValue) ~ ">" %}
     {%- else %}
         {% set Null = "Value<" ~ type.nullValue | replace_keyword ~ ">" %}
     {%- endif %}
-OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffer_, offset_)
+OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Null }}>(buffer_, offset_ + {{ entry.offset }})
 {%- endif %}
 {%- endmacro %}
 
@@ -119,7 +139,6 @@ OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffe
 {%- set Name = escape_string(entry.name) -%}
 {%- set T = type.name | format_class_name -%}
 {%- set Length = "Length<1>" -%}
-{%- set Offset = "Offset<" ~ entry.offset ~ ">" -%}
 
 {%- if entry.presence == 'constant' %}
     {%- if entry.valueRef != None %}
@@ -129,10 +148,10 @@ OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffe
     {%- endif %}
 ConstantField<{{ Name }}, {{ T }}, {{ Length }}, {{ CValue }}>()
 {%- elif entry.presence == 'required' %}
-RequiredField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}>(buffer_, offset_)
+RequiredField<{{ Name }}, {{ T }}, {{ Length }}>(buffer_, offset_ + {{ entry.offset }})
 {%- else %}
     {% set Null = "Value<" ~ T ~ "::NULL_VALUE>" %}
-OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffer_, offset_)
+OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Null }}>(buffer_, offset_ + {{ entry.offset }})
 {%- endif %}
 {%- endmacro %}
 
@@ -146,13 +165,17 @@ OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}, {{ Null }}>(buffe
 {%- set Name = escape_string(entry.name) -%}
 {%- set T = entry.name | format_class_name -%}
 {%- set Length = "Length<1>" -%}
-{%- set Offset = "Offset<" ~ entry.offset ~ ">" -%}
-RequiredField<{{ Name }}, {{ T }}, {{ Length }}, {{ Offset }}>(buffer_, offset_)
+RequiredField<{{ Name }}, {{ T }}, {{ Length }}>(buffer_, offset_ + {{ entry.offset }})
 {%- endmacro %}
 
 {% macro define_property_group(class_name, entry) %}
 {%- set group_class_name = entry.name | format_class_name -%}
 {{ group_class_name }}(buffer_, const_cast<std::size_t*>(sbePositionPtr()), actingVersion_, bufferLength_)
+{%- endmacro %}
+
+{% macro define_property_group_init(class_name, entry) %}
+{%- set group_class_name = entry.name | format_class_name -%}
+{{ group_class_name }}(buffer_, count, const_cast<std::size_t*>(sbePositionPtr()), actingVersion_, bufferLength_)
 {%- endmacro %}
 
 {% macro define_property_data(class_name, entry) %}
