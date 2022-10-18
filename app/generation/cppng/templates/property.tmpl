@@ -3,46 +3,26 @@
 
 template<std::size_t N>
 [[nodiscard]] decltype(auto) field() const noexcept {
-    {% for field in fields %}
-    if constexpr (N == {{ loop.index0 }}) {
-        return {{ define_property(class_name, field) }};
-    } else {{- '' -}}
-    {%- endfor %}
- {
-        static_assert(N + 1 == 0, "invalid template argument");
-    }
+{% for field in fields %}
+  if constexpr (N == {{ loop.index0 }}) {
+    return {{ define_property(class_name, field) }};
+  } else {{- '' -}}
+{%- endfor %} {
+    static_assert(N + 1 == 0, "invalid template argument");
+  }
 }
-
-{#
-{% if fields | selectattr('token', 'equalto', 'group') | list | length > 0 -%}
-template<std::size_t N>
-[[nodiscard]] decltype(auto) field(std::size_t count) noexcept {
-    {% for field in fields %}
-        {% if field.token == 'group' %}
-    if constexpr (N == {{ loop.index0 }}) {
-        return {{ define_property_group_init(class_name, field) }};
-    } else {{- '' -}}
-        {% endif %}
-    {%- endfor %}
- {
-        static_assert(N + 1 == 0, "invalid template argument");
-    }
-}
-{% endif %}
-#}
 
 template<FixedString N>
 [[nodiscard]] decltype(auto) field() const noexcept {
-    using namespace std::string_view_literals;
+  using namespace std::string_view_literals;
 
-    {% for field in fields %}
-    if constexpr (static_cast<std::string_view>(N) == "{{ field.name }}"sv) {
-        return this->field<{{ loop.index0 }}>();
-    } else {{- '' -}}
-    {%- endfor %}
- {
-        static_assert(sizeof(N) + 1 == 0, "invalid template argument");
-    }
+{% for field in fields %}
+  if constexpr (static_cast<std::string_view>(N) == "{{ field.name }}"sv) {
+     return this->field<{{ loop.index0 }}>();
+  } else {{- '' -}}
+{%- endfor %} {
+    static_assert(sizeof(N) + 1 == 0, "invalid template argument");
+  }
 }
 
 {% endmacro %}
@@ -126,7 +106,7 @@ OptionalField<{{ Name }}, {{ T }}, {{ Length }}, {{ Null }}>(buffer_, offset_ + 
     {% set type = entry -%}
 {%- endif %}
 {%- set composite_class_name = type.name | format_class_name -%}
-{{ composite_class_name }}(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_)
+WrapCompositeField<"{{ entry.name }}", {{ composite_class_name }}>(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_)
 {%- endmacro %}
 
 {% macro define_property_enum(class_name, entry) %}
@@ -170,7 +150,7 @@ RequiredField<{{ Name }}, {{ T }}, {{ Length }}>(buffer_, offset_ + {{ entry.off
 
 {% macro define_property_group(class_name, entry) %}
 {%- set group_class_name = entry.name | format_class_name -%}
-{{ group_class_name }}(buffer_, const_cast<std::size_t*>(sbePositionPtr()), actingVersion_, bufferLength_)
+WrapGroupField<"{{ entry.name }}", {{ group_class_name }}>(buffer_, const_cast<std::size_t*>(sbePositionPtr()), actingVersion_, bufferLength_)
 {%- endmacro %}
 
 {% macro define_property_group_init(class_name, entry) %}

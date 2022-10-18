@@ -14,132 +14,105 @@
 {%- set method_name = entry.name -%}
 {%- set num_in_group_type = (entry.dimensionType.containedTypes | selectattr('name', 'equalto', 'numInGroup') | first) -%}
 
-class {{ group_class_name }} final {
+class {{ group_class_name }} {
 private:
-    char* buffer_ = nullptr;
-    std::size_t bufferLength_ = 0;
-    std::size_t initialPosition_ = 0;
-    std::size_t* positionPtr_ = nullptr;
-    std::size_t blockLength_ = 0;
-    std::size_t count_ = 0;
-    std::size_t index_ = 0;
-    std::size_t offset_ = 0;
-    std::uint16_t actingVersion_ = 0;
+  char* buffer_ = nullptr;
+  std::size_t bufferLength_ = 0;
+  std::size_t initialPosition_ = 0;
+  std::size_t* positionPtr_ = nullptr;
+  std::size_t blockLength_ = 0;
+  std::size_t count_ = 0;
+  std::size_t index_ = 0;
+  std::size_t offset_ = 0;
+  std::uint16_t actingVersion_ = 0;
 
 public:
-    using aggregate_type = void;
-    using sequence_type = void;
+  {{ group_class_name }}(char* buffer, std::size_t* pos, std::uint16_t actingVersion, std::size_t bufferLength) {
+    {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
+    buffer_ = buffer;
+    bufferLength_ = bufferLength;
+    blockLength_ = dimensions.field<"blockLength">().value();
+    count_ = dimensions.field<"numInGroup">().value();
+    index_ = 0;
+    actingVersion_ = actingVersion;
+    initialPosition_ = *pos;
+    positionPtr_ = pos;
+    *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
+  }
 
-    {{ group_class_name }}(char* buffer, std::size_t* pos, std::uint16_t actingVersion,
-            std::size_t bufferLength)
-    {
-        {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
-        buffer_ = buffer;
-        bufferLength_ = bufferLength;
-        blockLength_ = dimensions.field<"blockLength">().value();
-        count_ = dimensions.field<"numInGroup">().value();
-        index_ = 0;
-        actingVersion_ = actingVersion;
-        initialPosition_ = *pos;
-        positionPtr_ = pos;
-        *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
+  {{ group_class_name }}& reset(std::size_t count) {
+    if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
+        throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
     }
 
-#if 0
-    {{ group_class_name }}(char* buffer, std::size_t count, std::size_t* pos, std::uint16_t actingVersion,
-            std::size_t bufferLength)
-    {
-        if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
-            throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
-        }
+    count_ = count;
+    blockLength_ = sbeBlockLength();
 
-        buffer_ = buffer;
-        bufferLength_ = bufferLength;
-        {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
-        dimensions.field<"blockLength">().value(sbeBlockLength());
-        dimensions.field<"numInGroup">().value(count);
-        index_ = 0;
-        count_ = count;
-        blockLength_ = sbeBlockLength();
-        actingVersion_ = actingVersion;
-        initialPosition_ = *pos;
-        positionPtr_ = pos;
-        *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
+    {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
+    dimensions.field<"blockLength">().value(sbeBlockLength());
+    dimensions.field<"numInGroup">().value(count_);
+
+    return *this;
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
+    return {{ entry.blockLength }};
+  }
+
+  [[nodiscard]] std::size_t sbePosition() const noexcept {
+    return *positionPtr_;
+  }
+
+  std::size_t sbeCheckPosition(std::size_t position) {
+    if (position > bufferLength_) [[unlikely]] {
+        throw std::runtime_error("buffer too short [E100]");
     }
-#endif
+    return position;
+  }
 
-    {{ group_class_name }}& reset(std::size_t count) {
-        if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
-            throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
-        }
+  void sbePosition(std::size_t position) {
+    *positionPtr_ = sbeCheckPosition(position);
+  }
 
-        count_ = count;
-        blockLength_ = sbeBlockLength();
+  [[nodiscard]] std::size_t count() const noexcept {
+    return count_;
+  }
 
-        {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
-        dimensions.field<"blockLength">().value(sbeBlockLength());
-        dimensions.field<"numInGroup">().value(count_);
+  [[nodiscard]] bool hasNext() const noexcept {
+    return index_ < count_;
+  }
 
-        return *this;
+  {{ group_class_name }} &next() {
+    if (index_ >= count_) {
+      throw std::runtime_error("index >= count [E108]");
     }
-
-    [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
-        return {{ entry.blockLength }};
+    offset_ = *positionPtr_;
+    if ((offset_ + blockLength_) > bufferLength_) [[unlikely]] {
+      throw std::runtime_error("buffer too short for next group index [E108]");
     }
+    *positionPtr_ = offset_ + blockLength_;
+    ++index_;
+    return *this;
+  }
 
-    [[nodiscard]] std::size_t sbePosition() const noexcept {
-        return *positionPtr_;
-    }
+  std::size_t resetCountToIndex() {
+    count_ = index_;
+    {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
+    dimensions.field<"numInGroup">().value(count_);
+    return count_;
+  }
 
-    std::size_t sbeCheckPosition(std::size_t position) {
-        if (position > bufferLength_) [[unlikely]] {
-            throw std::runtime_error("buffer too short [E100]");
-        }
-        return position;
-    }
-
-    void sbePosition(std::size_t position) {
-        *positionPtr_ = sbeCheckPosition(position);
-    }
-
-    [[nodiscard]] std::size_t count() const noexcept {
-        return count_;
-    }
-
-    [[nodiscard]] bool hasNext() const noexcept {
-        return index_ < count_;
-    }
-
-    {{ group_class_name }} &next() {
-        if (index_ >= count_) {
-            throw std::runtime_error("index >= count [E108]");
-        }
-        offset_ = *positionPtr_;
-        if ((offset_ + blockLength_) > bufferLength_) [[unlikely]] {
-            throw std::runtime_error("buffer too short for next group index [E108]");
-        }
-        *positionPtr_ = offset_ + blockLength_;
-        ++index_;
-        return *this;
-    }
-
-    std::size_t resetCountToIndex() {
-        count_ = index_;
-        {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
-        dimensions.field<"numInGroup">().value(count_);
-        return count_;
-    }
-
-    {{ define(entry.fields) | indent -}}
-    {{ '' -}}
-    {{ property.define(group_class_name, entry.fields) | indent }}
-    {{- '' -}}
+  {{ define(entry.fields) | indent(2) -}}
+  {{ '' -}}
+  {{ property.define(group_class_name, entry.fields) | indent(2) }}
+  {{- '' -}}
 private:
-    [[nodiscard]] std::size_t *sbePositionPtr() noexcept {
-        return positionPtr_;
-    }
-    [[nodiscard]] std::size_t const* sbePositionPtr() const noexcept {
-        return positionPtr_;
-    }
+  [[nodiscard]] std::size_t *sbePositionPtr() noexcept {
+    return positionPtr_;
+  }
+
+  [[nodiscard]] std::size_t const* sbePositionPtr() const noexcept {
+    return positionPtr_;
+  }
 };
 {% endmacro %}

@@ -1,10 +1,11 @@
 {% extends 'document.tmpl' %}
 
 {% block content %}
-template <std::size_t N> struct FixedString {
+template<std::size_t N>
+struct FixedString {
   char storage[N + 1] = {};
 
-  constexpr FixedString(char const *str) noexcept {
+  constexpr FixedString(char const* str) noexcept {
     for (std::size_t i = 0; i != N; ++i) {
       storage[i] = str[i];
     }
@@ -16,69 +17,86 @@ template <std::size_t N> struct FixedString {
     }
   }
 
-  [[nodiscard]] explicit constexpr operator std::string_view() const noexcept { return std::string_view(storage, N); }
+  [[nodiscard]] explicit constexpr operator std::string_view() const noexcept {
+    return std::string_view(storage, N);
+  }
 
-  [[nodiscard]] constexpr char const *c_str() const noexcept { return storage; }
-
-  [[nodiscard]] static constexpr std::size_t size() noexcept { return N; }
-
-  constexpr auto operator<=>(FixedString const &) const = default;
+  constexpr auto operator<=>(FixedString const&) const = default;
 };
 
-template <std::size_t N> FixedString(char const (&)[N])->FixedString<N - 1>;
+template<std::size_t N>
+FixedString(char const (&)[N]) -> FixedString<N - 1>;
 
-template <std::size_t N> using Length = std::integral_constant<std::size_t, N>;
+template<std::size_t N>
+using Length = std::integral_constant<std::size_t, N>;
 
-template <typename T, typename Length, class = void> struct Type;
-template <typename T> struct Type<T, Length<1>> {
+template<typename T, typename Length, class = void>
+struct Type;
+template<typename T>
+struct Type<T, Length<1>> {
   using value_type = T;
   using underlying_type = T;
   using length_type = Length<1>;
 };
-template <std::size_t N> struct Type<char, Length<N>, std::enable_if_t<(N != 1)>> {
+template<std::size_t N>
+struct Type<char, Length<N>, std::enable_if_t<(N != 1)>> {
   using value_type = std::string_view;
   using underlying_type = char;
   using length_type = Length<N>;
 };
-template <> struct Type<std::uint8_t, Length<0>> : Type<char, Length<0>> {};
+template<>
+struct Type<std::uint8_t, Length<0>> : Type<char, Length<0>> {};
 
-template <class T, class Length> concept ArrayLike = (Length::value > 1);
-template <class T, class Length>
+template<class T, class Length>
+concept ArrayLike = (Length::value > 1);
+template<class T, class Length>
 concept StringLike = std::is_same_v<typename Type<T, Length>::value_type, std::string_view>;
-template <class T, class Length> concept SingleElementLike = (Length::value == 1);
+template<class T, class Length>
+concept SingleElementLike = (Length::value == 1);
 
-template <auto N> struct Value { static constexpr auto value = N; };
+template<auto N>
+struct Value {
+  static constexpr auto value = N;
+};
 
-template <FixedString Name, typename T, typename Length, typename CValue> struct ConstantField {
+template<FixedString Name, typename T, typename Length, typename CValue>
+struct ConstantField {
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
-  [[nodiscard]] static constexpr auto name() noexcept { return static_cast<std::string_view>(Name); }
+  [[nodiscard]] static constexpr auto name() noexcept {
+    return static_cast<std::string_view>(Name);
+  }
 
-  [[nodiscard]] static constexpr auto present() noexcept { return true; }
+  [[nodiscard]] static constexpr auto present() noexcept {
+    return true;
+  }
 
-  [[nodiscard]] static constexpr auto value() noexcept { return static_cast<value_type>(CValue::value); }
+  [[nodiscard]] static constexpr auto value() noexcept {
+    return static_cast<value_type>(CValue::value);
+  }
 };
 
-template <FixedString Name, typename T, typename Length> class RequiredField {
+template<FixedString Name, typename T, typename Length>
+class RequiredField {
 private:
-  char *buffer_ = nullptr;
+  char* buffer_ = nullptr;
   std::size_t offset_ = 0;
 
 public:
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
-  // clang-format off
   constexpr RequiredField() = default;
-  constexpr RequiredField(char *buffer, std::size_t offset) noexcept
-    : buffer_(buffer), offset_(offset)
-  {}
+  constexpr RequiredField(char* buffer, std::size_t offset) noexcept : buffer_(buffer), offset_(offset) {}
 
-  [[nodiscard]] static constexpr auto name() noexcept { return static_cast<std::string_view>(Name); }
-  // clang-format on
+  [[nodiscard]] static constexpr auto name() noexcept {
+    return static_cast<std::string_view>(Name);
+  }
 
-  [[nodiscard]] static constexpr auto present() noexcept { return true; }
+  [[nodiscard]] static constexpr auto present() noexcept {
+    return true;
+  }
 
   [[nodiscard]] auto value() const noexcept requires(SingleElementLike<T, Length>) {
     return value_type(*dataBeginPtr());
@@ -97,16 +115,16 @@ public:
   }
 
 protected:
-  [[nodiscard]] underlying_type const *dataBeginPtr() const noexcept {
-    return std::bit_cast<underlying_type const *>(buffer_ + offset_);
+  [[nodiscard]] underlying_type const* dataBeginPtr() const noexcept {
+    return std::bit_cast<underlying_type const*>(buffer_ + offset_);
   }
 
-  [[nodiscard]] underlying_type *dataBeginPtr() noexcept {
-    return std::bit_cast<underlying_type *>(buffer_ + offset_);
+  [[nodiscard]] underlying_type* dataBeginPtr() noexcept {
+    return std::bit_cast<underlying_type*>(buffer_ + offset_);
   }
 };
 
-template <FixedString Name, typename T, typename Length, typename Null>
+template<FixedString Name, typename T, typename Length, typename Null>
 class OptionalField : public RequiredField<Name, T, Length> {
 public:
   using value_type = typename Type<T, Length>::value_type;
@@ -130,9 +148,59 @@ public:
   }
 };
 
+template<FixedString Name>
+struct CompositeFieldBase {
+  using aggregate_type = void;
+
+  [[nodiscard]] static constexpr auto name() noexcept {
+    return static_cast<std::string_view>(Name);
+  }
+};
+
+template<FixedString Name>
+struct GroupFieldBase {
+  using aggregate_type = void;
+  using sequence_type = void;
+
+  [[nodiscard]] static constexpr auto name() noexcept {
+    return static_cast<std::string_view>(Name);
+  }
+};
+
+template<FixedString Name, class T>
+struct WrapCompositeField : T {
+  using aggregate_type = void;
+
+  using T::T;
+
+  [[nodiscard]] static constexpr auto name() noexcept {
+    return static_cast<std::string_view>(Name);
+  }
+
+  [[nodiscard]] constexpr auto present() const noexcept {
+    return this->template field<0>().present();
+  }
+};
+
+template<FixedString Name, class T>
+struct WrapGroupField : T {
+  using aggregate_type = void;
+  using sequence_type = void;
+
+  using T::T;
+
+  [[nodiscard]] static constexpr auto name() noexcept {
+    return static_cast<std::string_view>(Name);
+  }
+};
+
 template<class T>
-constexpr auto isAggregate = requires { typename T::aggregate_type; };
+constexpr auto isAggregate = requires {
+  typename T::aggregate_type;
+};
 template<class T>
-constexpr auto isSequence = requires { typename T::sequence_type; };
+constexpr auto isSequence = requires {
+  typename T::sequence_type;
+};
 {{ '' -}}
 {% endblock %}

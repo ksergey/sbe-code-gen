@@ -6,81 +6,67 @@
 
 {%- set composite_class_name = type.name | format_class_name -%}
 
-class {{ composite_class_name }} final {
+class {{ composite_class_name }} {
 private:
-    char* buffer_ = nullptr;
-    std::size_t bufferLength_ = 0;
-    std::size_t offset_ = 0;
-    std::uint16_t actingVersion_ = 0;
+  char* buffer_ = nullptr;
+  std::size_t bufferLength_ = 0;
+  std::size_t offset_ = 0;
+  std::uint16_t actingVersion_ = 0;
 
 public:
-    using aggregate_type = void;
+  {{ composite_class_name }}() = default;
 
-    {{ composite_class_name }}() = default;
-
-    {{ composite_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
-            std::uint16_t actingVersion)
-        : buffer_(buffer)
-        , bufferLength_(bufferLength)
-        , offset_(offset)
-        , actingVersion_(actingVersion)
-    {
-        if ((offset_ + encodedLength()) > bufferLength_) [[unlikely]] {
-            throw std::runtime_error("buffer too short for flyweight {{ type.name }} [E107]");
-        }
+  {{ composite_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength, std::uint16_t actingVersion)
+      : buffer_(buffer), bufferLength_(bufferLength), offset_(offset), actingVersion_(actingVersion) {
+    if ((offset_ + encodedLength()) > bufferLength_) [[unlikely]] {
+      throw std::runtime_error("buffer too short for flyweight {{ type.name }} [E107]");
     }
+  }
 
-    {{ composite_class_name }}(char* buffer, std::size_t bufferLength, std::uint16_t actingVersion)
-        : {{ composite_class_name }}(buffer, 0, bufferLength, actingVersion)
-    {}
+  {{ composite_class_name }}(char* buffer, std::size_t bufferLength, std::uint16_t actingVersion)
+      : {{ composite_class_name }}(buffer, 0, bufferLength, actingVersion) {}
 
-    {{ composite_class_name }}(char* buffer, std::size_t bufferLength)
-        : {{ composite_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion())
-    {}
+  {{ composite_class_name }}(char* buffer, std::size_t bufferLength)
+      : {{ composite_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion()) {}
 
-    {{ composite_class_name }}& wrap(char* buffer, std::size_t offset, std::uint16_t actingVersion,
-            std::size_t bufferLength) {
-        return *this = {{ composite_class_name }}(buffer, offset, bufferLength, actingVersion);
-    }
+  {{ composite_class_name }}& wrap(char* buffer, std::size_t offset, std::uint16_t actingVersion, std::size_t bufferLength) {
+    return *this = {{ composite_class_name }}(buffer, offset, bufferLength, actingVersion);
+  }
 
-    [[nodiscard]] static constexpr std::size_t encodedLength() noexcept {
-        return {{ type.encodedLength }};
-    }
+  [[nodiscard]] static constexpr std::size_t encodedLength() noexcept {
+    return {{ type.encodedLength }};
+  }
 
-    [[nodiscard]] std::size_t offset() const noexcept {
-        return offset_;
-    }
+  [[nodiscard]] std::size_t offset() const noexcept {
+    return offset_;
+  }
 
-    [[nodiscard]] char const* buffer() const noexcept {
-        return buffer_;
-    }
+  [[nodiscard]] char const* buffer() const noexcept {
+    return buffer_;
+  }
 
-    [[nodiscard]] char* buffer() noexcept {
-        return buffer_;
-    }
+  [[nodiscard]] char* buffer() noexcept {
+    return buffer_;
+  }
 
-    [[nodiscard]] std::size_t bufferLength() const noexcept {
-        return bufferLength_;
-    }
+  [[nodiscard]] std::size_t bufferLength() const noexcept {
+    return bufferLength_;
+  }
 
-    [[nodiscard]] std::uint16_t actingVersion() const noexcept {
-        return actingVersion_;
-    }
+  [[nodiscard]] std::uint16_t actingVersion() const noexcept {
+    return actingVersion_;
+  }
 
-    [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
-        return {{ schema.id }};
-    }
+  [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
+    return {{ schema.id }};
+  }
 
-    [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
-        return {{ schema.version }};
-    }
+  [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
+    return {{ schema.version }};
+  }
 
-    [[nodiscard]] auto present() const noexcept {
-        return {{ property.define_property(composite_class_name, type.containedTypes | first) }}.present();
-    }
-
-    {{ property.define(composite_class_name, type.containedTypes) | indent }}
-    {{- '' -}}
+  {{ property.define(composite_class_name, type.containedTypes) | indent(2) }}
+  {{- '' -}}
 };
 
 {% endblock %}

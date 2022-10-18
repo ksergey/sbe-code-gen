@@ -8,132 +8,127 @@
 {%- set message_class_name = message.name | format_class_name -%}
 {%- set header_class_name = schema.headerType.name | format_class_name -%}
 
-class {{ message_class_name }} final {
+class {{ message_class_name }} {
 private:
-    char* buffer_ = nullptr;
-    std::size_t bufferLength_ = 0;
-    std::size_t offset_ = 0;
-    std::size_t position_ = 0;
-    std::size_t actingBlockLength_ = 0;
-    std::uint16_t actingVersion_ = 0;
+  char* buffer_ = nullptr;
+  std::size_t bufferLength_ = 0;
+  std::size_t offset_ = 0;
+  std::size_t position_ = 0;
+  std::size_t actingBlockLength_ = 0;
+  std::uint16_t actingVersion_ = 0;
 
 public:
-    using aggregate_type = void;
+  using aggregate_type = void;
 
-    {{ message_class_name }}() = default;
+  {{ message_class_name }}() = default;
 
-    {{ message_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
-            std::size_t actingBlockLength, std::uint16_t actingVersion)
-        : buffer_(buffer)
-        , bufferLength_(bufferLength)
-        , offset_(offset)
-        , position_(sbeCheckPosition(offset + actingBlockLength))
-        , actingBlockLength_(actingBlockLength)
-        , actingVersion_(actingVersion)
-    {}
+  {{ message_class_name }}(char* buffer, std::size_t offset, std::size_t bufferLength,
+          std::size_t actingBlockLength, std::uint16_t actingVersion)
+      : buffer_(buffer), bufferLength_(bufferLength), offset_(offset),
+        position_(sbeCheckPosition(offset + actingBlockLength)), actingBlockLength_(actingBlockLength),
+        actingVersion_(actingVersion) {}
 
-    {{ message_class_name }}(char* buffer, std::size_t bufferLength)
-        : {{ message_class_name  }}(buffer, 0, bufferLength, sbeBlockLength(), sbeSchemaVersion())
-    {}
+  {{ message_class_name }}(char* buffer, std::size_t bufferLength)
+      : {{ message_class_name  }}(buffer, 0, bufferLength, sbeBlockLength(), sbeSchemaVersion()) {}
 
-    {{ message_class_name }}(char* buffer, std::size_t bufferLength, std::size_t actingBlockLength,
-            std::uint16_t actingVersion)
-        : {{ message_class_name }}(buffer, 0, bufferLength, actingBlockLength, actingVersion)
-    {}
+  {{ message_class_name }}(char* buffer, std::size_t bufferLength, std::size_t actingBlockLength,
+          std::uint16_t actingVersion)
+      : {{ message_class_name }}(buffer, 0, bufferLength, actingBlockLength, actingVersion) {}
 
-    {{ message_class_name }}& wrapForEncode(char* buffer, std::size_t offset, std::size_t bufferLength) {
-        return *this = {{ message_class_name }}(buffer, offset, bufferLength, sbeBlockLength(), sbeSchemaVersion());
+  {{ message_class_name }}& wrapForEncode(char* buffer, std::size_t offset, std::size_t bufferLength) {
+    return *this = {{ message_class_name }}(buffer, offset, bufferLength, sbeBlockLength(), sbeSchemaVersion());
+  }
+
+  {{ message_class_name }}& wrapForDecode(char* buffer, std::size_t offset, std::size_t actingBlockLength,
+          std::uint16_t actingVersion, std::size_t bufferLength) {
+    return *this = {{ message_class_name }}(buffer, offset, bufferLength, actingBlockLength, actingVersion);
+  }
+
+  {{ message_class_name }}& wrapAndApplyHeader(char* buffer, std::size_t offset, std::size_t bufferLength) {
+    auto header = MessageHeader(buffer, offset, bufferLength, sbeSchemaVersion());
+    header.field<"blockLength">().value(sbeBlockLength());
+    header.field<"templateId">().value(sbeTemplateId());
+    header.field<"schemaId">().value(sbeSchemaId());
+    header.field<"version">().value(sbeSchemaVersion());
+
+    return *this = {{ message_class_name }}(buffer, offset + {{ header_class_name }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
+  }
+
+  [[nodiscard]] char const* buffer() const noexcept {
+    return buffer_;
+  }
+
+  [[nodiscard]] char* buffer() noexcept {
+    return buffer_;
+  }
+
+  [[nodiscard]] std::size_t bufferLength() const noexcept {
+    return bufferLength_;
+  }
+
+  [[nodiscard]] std::size_t offset() const noexcept {
+    return offset_;
+  }
+
+  [[nodiscard]] std::size_t sbePosition() const noexcept {
+    return position_;
+  }
+
+  void sbePosition(std::size_t value) {
+    position_ = sbeCheckPosition(value);
+  }
+
+  [[nodiscard]] std::size_t actingBlockLength() const noexcept {
+    return actingBlockLength_;
+  }
+
+  [[nodiscard]] std::uint16_t actingVersion() const noexcept {
+    return actingVersion_;
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
+    return {{ schema.id }};
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
+    return {{ schema.version }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
+    return {{ message.blockLength }};
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t sbeTemplateId() noexcept {
+    return {{ message.id }};
+  }
+
+  std::size_t sbeCheckPosition(std::size_t position) {
+    if (position > bufferLength_) [[unlikely]] {
+      throw std::runtime_error("buffer too short for message {{ message.name }} [E100]");
     }
+    return position;
+  }
 
-    {{ message_class_name }}& wrapForDecode(char* buffer, std::size_t offset, std::size_t actingBlockLength,
-            std::uint16_t actingVersion, std::size_t bufferLength) {
-        return *this = {{ message_class_name }}(buffer, offset, bufferLength, actingBlockLength, actingVersion);
-    }
+  {{ message_class_name }}& sbeRewind() {
+    return wrapForDecode(buffer_, offset_, actingBlockLength_, actingVersion_, bufferLength_);
+  }
 
-    {{ message_class_name }}& wrapAndApplyHeader(char* buffer, std::size_t offset, std::size_t bufferLength) {
-        auto header = {{ header_class_name }}(buffer, offset, bufferLength, sbeSchemaVersion());
-        header.field<"blockLength">().value(sbeBlockLength());
-        header.field<"templateId">().value(sbeTemplateId());
-        header.field<"schemaId">().value(sbeSchemaId());
-        header.field<"version">().value(sbeSchemaVersion());
+  [[nodiscard]] std::size_t encodedLength() const noexcept {
+    return sbePosition() - offset_;
+  }
 
-        return *this = {{ message_class_name }}(buffer, offset + {{ header_class_name }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
-    }
-
-    [[nodiscard]] char const* buffer() const noexcept {
-        return buffer_;
-    }
-
-    [[nodiscard]] char* buffer() noexcept {
-        return buffer_;
-    }
-
-    [[nodiscard]] std::size_t bufferLength() const noexcept {
-        return bufferLength_;
-    }
-
-    [[nodiscard]] std::size_t offset() const noexcept {
-        return offset_;
-    }
-
-    [[nodiscard]] std::size_t sbePosition() const noexcept {
-        return position_;
-    }
-
-    void sbePosition(std::size_t value) {
-        position_ = sbeCheckPosition(value);
-    }
-
-    [[nodiscard]] std::size_t actingBlockLength() const noexcept {
-        return actingBlockLength_;
-    }
-
-    [[nodiscard]] std::uint16_t actingVersion() const noexcept {
-        return actingVersion_;
-    }
-
-    [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
-        return {{ schema.id }};
-    }
-
-    [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
-        return {{ schema.version }};
-    }
-
-    [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
-        return {{ message.blockLength }};
-    }
-
-    [[nodiscard]] static constexpr std::uint16_t sbeTemplateId() noexcept {
-        return {{ message.id }};
-    }
-
-    std::size_t sbeCheckPosition(std::size_t position) {
-        if (position > bufferLength_) [[unlikely]] {
-            throw std::runtime_error("buffer too short for message {{ message.name }} [E100]");
-        }
-        return position;
-    }
-
-    {{ message_class_name }}& sbeRewind() {
-        return wrapForDecode(buffer_, offset_, actingBlockLength_, actingVersion_, bufferLength_);
-    }
-
-    [[nodiscard]] std::size_t encodedLength() const noexcept {
-        return sbePosition() - offset_;
-    }
-
-    {{ group.define(message.fields) | indent }}
-    {{ '' -}}
-    {{ property.define(message_class_name, message.fields) | indent }}
-    {{- '' -}}
+  {{ group.define(message.fields) | indent(2) }}
+  {{ '' -}}
+  {{ property.define(message_class_name, message.fields) | indent(2) }}
+  {{- '' -}}
 private:
-    [[nodiscard]] std::size_t* sbePositionPtr() noexcept {
-        return &position_;
-    }
-    [[nodiscard]] std::size_t const* sbePositionPtr() const noexcept {
-        return &position_;
-    }
+  [[nodiscard]] std::size_t* sbePositionPtr() noexcept {
+    return &position_;
+  }
+
+  [[nodiscard]] std::size_t const* sbePositionPtr() const noexcept {
+    return &position_;
+  }
 };
 
 {% endblock %}
