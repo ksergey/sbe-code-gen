@@ -29,10 +29,6 @@ public:
   {{ composite_class_name }}(char* buffer, std::size_t bufferLength)
       : {{ composite_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion()) {}
 
-  {{ composite_class_name }}& wrap(char* buffer, std::size_t offset, std::uint16_t actingVersion, std::size_t bufferLength) {
-    return *this = {{ composite_class_name }}(buffer, offset, bufferLength, actingVersion);
-  }
-
   [[nodiscard]] static constexpr std::size_t encodedLength() noexcept {
     return {{ type.encodedLength }};
   }
