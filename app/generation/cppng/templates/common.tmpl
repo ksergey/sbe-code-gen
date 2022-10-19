@@ -27,6 +27,31 @@ struct FixedString {
 template<std::size_t N>
 FixedString(char const (&)[N]) -> FixedString<N - 1>;
 
+template<auto N>
+struct Value {
+  static constexpr auto value = N;
+};
+
+inline namespace literals {
+  template<FixedString N>
+  constexpr auto operator""_name() noexcept {
+    return Value<N>();
+  }
+
+  // alias for ""_name
+  template<FixedString N>
+  constexpr auto operator""_n() noexcept {
+    return Value<N>();
+  }
+
+  // TODO (boost/hana/bool.hpp:197)
+  // literal 1_idx
+
+} // namespace literals
+
+template<std::size_t N>
+constexpr auto idx = std::integral_constant<std::size_t, N>();
+
 template<std::size_t N>
 using Length = std::integral_constant<std::size_t, N>;
 
@@ -49,14 +74,21 @@ struct Type<std::uint8_t, Length<0>> : Type<char, Length<0>> {};
 
 template<class T, class Length>
 concept ArrayLike = (Length::value > 1);
+
 template<class T, class Length>
 concept StringLike = std::is_same_v<typename Type<T, Length>::value_type, std::string_view>;
+
 template<class T, class Length>
 concept SingleElementLike = (Length::value == 1);
 
-template<auto N>
-struct Value {
-  static constexpr auto value = N;
+template<class T>
+concept isAggregate = requires {
+  typename T::aggregate_type;
+};
+
+template<class T>
+concept isSequence = requires {
+  typename T::sequence_type;
 };
 
 template<FixedString Name, typename T, typename Length, typename CValue>
@@ -88,6 +120,7 @@ public:
   using underlying_type = typename Type<T, Length>::underlying_type;
 
   constexpr RequiredField() = default;
+
   constexpr RequiredField(char* buffer, std::size_t offset) noexcept : buffer_(buffer), offset_(offset) {}
 
   [[nodiscard]] static constexpr auto name() noexcept {
@@ -148,25 +181,6 @@ public:
   }
 };
 
-template<FixedString Name>
-struct CompositeFieldBase {
-  using aggregate_type = void;
-
-  [[nodiscard]] static constexpr auto name() noexcept {
-    return static_cast<std::string_view>(Name);
-  }
-};
-
-template<FixedString Name>
-struct GroupFieldBase {
-  using aggregate_type = void;
-  using sequence_type = void;
-
-  [[nodiscard]] static constexpr auto name() noexcept {
-    return static_cast<std::string_view>(Name);
-  }
-};
-
 template<FixedString Name, class T>
 struct WrapCompositeField : T {
   using aggregate_type = void;
@@ -178,7 +192,7 @@ struct WrapCompositeField : T {
   }
 
   [[nodiscard]] constexpr auto present() const noexcept {
-    return this->template field<0>().present();
+    return this->template get<0>().present();
   }
 };
 
@@ -192,15 +206,6 @@ struct WrapGroupField : T {
   [[nodiscard]] static constexpr auto name() noexcept {
     return static_cast<std::string_view>(Name);
   }
-};
-
-template<class T>
-constexpr auto isAggregate = requires {
-  typename T::aggregate_type;
-};
-template<class T>
-constexpr auto isSequence = requires {
-  typename T::sequence_type;
 };
 {{ '' -}}
 {% endblock %}
