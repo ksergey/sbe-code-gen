@@ -119,9 +119,9 @@ public:
   using value_type = typename Type<T, Length>::value_type;
   using underlying_type = typename Type<T, Length>::underlying_type;
 
-  constexpr RequiredField() = default;
+  RequiredField() = default;
 
-  constexpr RequiredField(char* buffer, std::size_t offset) noexcept : buffer_(buffer), offset_(offset) {}
+  RequiredField(char* buffer, std::size_t offset) noexcept : buffer_(buffer), offset_(offset) {}
 
   [[nodiscard]] static constexpr auto name() noexcept {
     return static_cast<std::string_view>(Name);
@@ -205,6 +205,85 @@ struct WrapGroupField : T {
 
   [[nodiscard]] static constexpr auto name() noexcept {
     return static_cast<std::string_view>(Name);
+  }
+};
+
+template<FixedString Name, class T>
+class DataField {
+private:
+  char* buffer_ = nullptr;
+  std::size_t bufferLength_ = 0;
+  std::size_t initialPosition_ = 0;
+  std::size_t* positionPtr_ = nullptr;
+  std::uint16_t actingVersion_ = 0;
+
+public:
+  using length_type = typename decltype(std::declval<T>()["length"_name])::underlying_type;
+  using underlying_type = typename decltype(std::declval<T>()["varData"_name])::underlying_type;
+  using value_type = typename Type<underlying_type, Length<0>>::value_type;
+
+  DataField() = default;
+
+  DataField(char* buffer, std::size_t* pos, std::uint16_t actingVersion, std::size_t bufferLength) {
+    buffer_ = buffer;
+    bufferLength_ = bufferLength;
+    initialPosition_ = *pos;
+    positionPtr_ = pos;
+    actingVersion_ = actingVersion;
+    *positionPtr_ = *positionPtr_ + sizeof(length_type);
+  }
+
+  [[nodiscard]] static constexpr auto name() noexcept {
+    return static_cast<std::string_view>(Name);
+  }
+
+  [[nodiscard]] auto present() const noexcept {
+    return this->size() > 0;
+  }
+
+  [[nodiscard]] std::size_t size() const noexcept {
+    return std::size_t(*this->lengthBeginPtr());
+  }
+
+  [[nodiscard]] value_type value() const {
+    auto const size = this->size();
+    auto result = value_type(dataBeginPtr(), size);
+    sbePosition(initialPosition_ + sizeof(length_type) + size * sizeof(underlying_type));
+  }
+
+  void value(value_type value) {
+    auto const size = static_cast<length_type>(value.size());
+    *this->lengthBeginPtr() = size;
+    std::memcpy(dataBeginPtr(), value.data(), size * sizeof(underlying_type));
+    sbePosition(initialPosition_ + sizeof(length_type) + size * sizeof(underlying_type));
+  }
+
+  std::size_t sbeCheckPosition(std::size_t position) const {
+    if (position > bufferLength_) [[unlikely]] {
+        throw std::runtime_error("buffer too short [E100]");
+    }
+    return position;
+  }
+
+  void sbePosition(std::size_t position) {
+    *positionPtr_ = sbeCheckPosition(position);
+  }
+
+private:
+  [[nodiscard]] length_type const* lengthBeginPtr() const noexcept {
+    return std::bit_cast<length_type const*>(buffer_ + initialPosition_);
+  }
+
+  [[nodiscard]] length_type* lengthBeginPtr() noexcept {
+    return std::bit_cast<length_type*>(buffer_ + initialPosition_);
+  }
+
+  [[nodiscard]] underlying_type const* dataBeginPtr() const noexcept {
+    return std::bit_cast<underlying_type const*>(buffer_ + initialPosition_ + sizeof(length_type));
+  }
+
+  [[nodiscard]] underlying_type* dataBeginPtr() noexcept {
+    return std::bit_cast<underlying_type*>(buffer_ + initialPosition_ + sizeof(length_type));
   }
 };
 {{ '' -}}
