@@ -31,8 +31,8 @@ public:
     {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
     buffer_ = buffer;
     bufferLength_ = bufferLength;
-    blockLength_ = dimensions.field<"blockLength">().value();
-    count_ = dimensions.field<"numInGroup">().value();
+    blockLength_ = dimensions.get<"blockLength">().value();
+    count_ = dimensions.get<"numInGroup">().value();
     index_ = 0;
     actingVersion_ = actingVersion;
     initialPosition_ = *pos;
@@ -40,7 +40,7 @@ public:
     *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
   }
 
-  {{ group_class_name }}& reset(std::size_t count) {
+  void reset(std::size_t count) {
     if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
         throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
     }
@@ -49,10 +49,8 @@ public:
     blockLength_ = sbeBlockLength();
 
     {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
-    dimensions.field<"blockLength">().value(sbeBlockLength());
-    dimensions.field<"numInGroup">().value(count_);
-
-    return *this;
+    dimensions.get<"blockLength">().value(sbeBlockLength());
+    dimensions.get<"numInGroup">().value(count_);
   }
 
   [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
@@ -82,7 +80,7 @@ public:
     return index_ < count_;
   }
 
-  {{ group_class_name }} &next() {
+  void next() {
     if (index_ >= count_) {
       throw std::runtime_error("index >= count [E108]");
     }
@@ -92,13 +90,12 @@ public:
     }
     *positionPtr_ = offset_ + blockLength_;
     ++index_;
-    return *this;
   }
 
   std::size_t resetCountToIndex() {
     count_ = index_;
     {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
-    dimensions.field<"numInGroup">().value(count_);
+    dimensions.get<"numInGroup">().value(count_);
     return count_;
   }
 
