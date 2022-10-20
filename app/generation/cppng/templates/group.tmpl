@@ -55,7 +55,7 @@ public:
     dimensions.get<"blockLength">().value(sbeBlockLength());
     dimensions.get<"numInGroup">().value(count_);
 
-    *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
+    *positionPtr_ = initialPosition_ + {{ dimensions_type_class_name }}::encodedLength();
   }
 
   [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
