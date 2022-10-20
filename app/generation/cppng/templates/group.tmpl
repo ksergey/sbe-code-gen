@@ -27,6 +27,8 @@ private:
   std::uint16_t actingVersion_ = 0;
 
 public:
+  using sequence_type = void;
+
   {{ group_class_name }}(char* buffer, std::size_t* pos, std::uint16_t actingVersion, std::size_t bufferLength) {
     {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
     buffer_ = buffer;
@@ -47,10 +49,13 @@ public:
 
     count_ = count;
     blockLength_ = sbeBlockLength();
+    index_ = 0;
 
     {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
     dimensions.get<"blockLength">().value(sbeBlockLength());
     dimensions.get<"numInGroup">().value(count_);
+
+    *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
   }
 
   [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
