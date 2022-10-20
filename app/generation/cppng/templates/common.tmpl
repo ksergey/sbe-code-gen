@@ -195,14 +195,13 @@ public:
   using RequiredField<Name, T, Length>::value;
 
   void value(std::nullptr_t) noexcept {
-    std::memcpy(this->dataBeginPtr(), &Null::value, sizeof(underlying_type));
+    auto const value = underlying_type(Null::value);
+    std::memcpy(this->dataBeginPtr(), &value, sizeof(value));
   }
 };
 
 template<FixedString Name, class T>
 struct WrapCompositeField : T {
-  using aggregate_type = void;
-
   using T::T;
 
   [[nodiscard]] static constexpr auto name() noexcept {
@@ -216,9 +215,6 @@ struct WrapCompositeField : T {
 
 template<FixedString Name, class T>
 struct WrapGroupField : T {
-  using aggregate_type = void;
-  using sequence_type = void;
-
   using T::T;
 
   [[nodiscard]] static constexpr auto name() noexcept {
