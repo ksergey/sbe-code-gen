@@ -33,8 +33,8 @@ public:
     {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
     buffer_ = buffer;
     bufferLength_ = bufferLength;
-    blockLength_ = dimensions.get<"blockLength">().value();
-    count_ = dimensions.get<"numInGroup">().value();
+    blockLength_ = dimensions["blockLength"_name].value();
+    count_ = dimensions["numInGroup"_name].value();
     index_ = 0;
     actingVersion_ = actingVersion;
     initialPosition_ = *pos;
@@ -52,8 +52,8 @@ public:
     index_ = 0;
 
     {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
-    dimensions.get<"blockLength">().value(sbeBlockLength());
-    dimensions.get<"numInGroup">().value(count_);
+    dimensions["blockLength"_name].value(sbeBlockLength());
+    dimensions["numInGroup"_name].value(count_);
 
     *positionPtr_ = initialPosition_ + {{ dimensions_type_class_name }}::encodedLength();
   }
@@ -100,7 +100,7 @@ public:
   std::size_t resetCountToIndex() {
     count_ = index_;
     {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
-    dimensions.get<"numInGroup">().value(count_);
+    dimensions["numInGroup"_name].value(count_);
     return count_;
   }
 

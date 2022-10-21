@@ -46,10 +46,10 @@ public:
 
   {{ message_class_name }}& wrapAndApplyHeader(char* buffer, std::size_t offset, std::size_t bufferLength) {
     auto header = MessageHeader(buffer, offset, bufferLength, sbeSchemaVersion());
-    header.get<"blockLength">().value(sbeBlockLength());
-    header.get<"templateId">().value(sbeTemplateId());
-    header.get<"schemaId">().value(sbeSchemaId());
-    header.get<"version">().value(sbeSchemaVersion());
+    header["blockLength"_name].value(sbeBlockLength());
+    header["templateId"_name].value(sbeTemplateId());
+    header["schemaId"_name].value(sbeSchemaId());
+    header["version"_name].value(sbeSchemaVersion());
 
     return *this = {{ message_class_name }}(buffer, offset + {{ header_class_name }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
   }

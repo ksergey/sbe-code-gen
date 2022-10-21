@@ -32,6 +32,23 @@ struct Value {
   static constexpr auto value = N;
 };
 
+template<std::size_t N>
+struct FieldNo : std::integral_constant<std::size_t, N> {};
+
+template<FixedString N>
+struct FieldName {
+  using value_type = std::string_view;
+  static constexpr auto value = static_cast<std::string_view>(N);
+
+  [[nodiscard]] constexpr operator value_type() noexcept const {
+    return value;
+  }
+
+  [[nodiscard]] constexpr value_type operator()() noexcept const {
+    return value;
+  }
+};
+
 namespace detail {
 
 constexpr int toInt(char c) noexcept {
@@ -209,7 +226,7 @@ struct WrapCompositeField : T {
   }
 
   [[nodiscard]] constexpr auto present() const noexcept {
-    return this->template get<0>().present();
+    return this->operator[](0_idx).present();
   }
 };
 
