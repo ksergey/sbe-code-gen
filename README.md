@@ -115,6 +115,7 @@ g++ main.cpp -o main -std=c++2a
 # TODO
 
 - [ ] tests
+- [ ] ci integration
 - [ ] cmake integration
 - [ ] rust support?
 - [ ] python support?
