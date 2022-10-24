@@ -114,10 +114,10 @@ g++ main.cpp -o main -std=c++2a
 
 # TODO
 
-- [  ] tests
-- [  ] cmake integration
-- [  ] rust support?
-- [  ] python support?
-- [  ] (cppng) from/to json serialization
-- [  ] (cppng) set/get fixed-length strings as variable length string (trim till '\0')
-- [  ] tests
+- [ ] tests
+- [ ] cmake integration
+- [ ] rust support?
+- [ ] python support?
+- [ ] (cppng) from/to json serialization
+- [ ] (cppng) set/get fixed-length strings as variable length string (trim till '\0')
+- [ ] tests
