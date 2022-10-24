@@ -27,11 +27,6 @@ struct FixedString {
 template<std::size_t N>
 FixedString(char const (&)[N]) -> FixedString<N - 1>;
 
-template<auto N>
-struct Value {
-  static constexpr auto value = N;
-};
-
 template<std::size_t N>
 struct FieldNo : std::integral_constant<std::size_t, N> {};
 
@@ -40,11 +35,11 @@ struct FieldName {
   using value_type = std::string_view;
   static constexpr auto value = static_cast<std::string_view>(N);
 
-  [[nodiscard]] constexpr operator value_type() noexcept const {
+  [[nodiscard]] constexpr operator value_type() const noexcept {
     return value;
   }
 
-  [[nodiscard]] constexpr value_type operator()() noexcept const {
+  [[nodiscard]] constexpr value_type operator()() const noexcept {
     return value;
   }
 };
@@ -74,21 +69,29 @@ constexpr std::size_t parse(char const (&str)[N]) noexcept {
 inline namespace literals {
 template<FixedString N>
 constexpr auto operator""_name() noexcept {
-  return Value<N>();
+  return FieldName<N>();
 }
 
 template<char... c>
-constexpr auto operator"" _idx() {
-  return std::integral_constant<std::size_t, detail::parse<sizeof...(c)>({c...})>();
+constexpr auto operator"" _number() {
+  return FieldNo<detail::parse<sizeof...(c)>({c...})>();
 }
 
 } // namespace literals
 
 template<std::size_t N>
-constexpr auto idx = std::integral_constant<std::size_t, N>();
+constexpr auto number = FieldNo<N>();
+
+template<FixedString N>
+constexpr auto name = FieldName<N>();
 
 template<std::size_t N>
 using Length = std::integral_constant<std::size_t, N>;
+
+template<auto N>
+struct Value {
+  static constexpr auto value = N;
+};
 
 template<typename T, typename Length, class = void>
 struct Type;
@@ -226,7 +229,7 @@ struct WrapCompositeField : T {
   }
 
   [[nodiscard]] constexpr auto present() const noexcept {
-    return this->operator[](0_idx).present();
+    return this->operator[](number<0>).present();
   }
 };
 
