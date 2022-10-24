@@ -120,7 +120,7 @@ public:
   {{ group.define(message.fields) | indent(2) }}
   {{ '' -}}
   {{ property.define(message_class_name, message.fields) | indent(2) }}
-  {{- '' -}}
+  {{- '' }}
 private:
   [[nodiscard]] std::size_t* sbePositionPtr() noexcept {
     return &position_;

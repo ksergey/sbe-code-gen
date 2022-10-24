@@ -107,7 +107,7 @@ public:
   {{ define(entry.fields) | indent(2) -}}
   {{ '' -}}
   {{ property.define(group_class_name, entry.fields) | indent(2) }}
-  {{- '' -}}
+  {{- '' }}
 private:
   [[nodiscard]] std::size_t *sbePositionPtr() noexcept {
     return positionPtr_;

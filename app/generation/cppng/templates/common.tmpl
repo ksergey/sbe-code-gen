@@ -11,24 +11,16 @@ struct FixedString {
     }
   }
 
-  constexpr FixedString(std::string_view str) noexcept {
-    for (std::size_t i = 0; i != N; ++i) {
-      storage[i] = str[i];
-    }
-  }
-
   [[nodiscard]] explicit constexpr operator std::string_view() const noexcept {
     return std::string_view(storage, N);
   }
-
-  constexpr auto operator<=>(FixedString const&) const = default;
 };
 
 template<std::size_t N>
 FixedString(char const (&)[N]) -> FixedString<N - 1>;
 
 template<std::size_t N>
-struct FieldNo : std::integral_constant<std::size_t, N> {};
+struct FieldIdx : std::integral_constant<std::size_t, N> {};
 
 template<FixedString N>
 struct FieldName {
@@ -73,14 +65,14 @@ constexpr auto operator""_name() noexcept {
 }
 
 template<char... c>
-constexpr auto operator"" _number() {
-  return FieldNo<detail::parse<sizeof...(c)>({c...})>();
+constexpr auto operator"" _idx() {
+  return FieldIdx<detail::parse<sizeof...(c)>({c...})>();
 }
 
 } // namespace literals
 
 template<std::size_t N>
-constexpr auto number = FieldNo<N>();
+constexpr auto idx = FieldIdx<N>();
 
 template<FixedString N>
 constexpr auto name = FieldName<N>();
@@ -238,7 +230,7 @@ public:
 
   using RequiredField<Name, T, Length>::RequiredField;
 
-  [[nodiscard]] constexpr auto present() noexcept {
+  [[nodiscard]] constexpr auto present() const noexcept {
     auto const value = *this->dataBeginPtr();
     if constexpr (std::is_floating_point_v<value_type> && std::isnan(Null::value)) {
       return std::isnan(value);
@@ -275,7 +267,7 @@ struct WrapCompositeField : T {
   }
 
   [[nodiscard]] constexpr auto present() const noexcept {
-    return this->operator[](number<0>).present();
+    return this->operator[](idx<0>).present();
   }
 };
 

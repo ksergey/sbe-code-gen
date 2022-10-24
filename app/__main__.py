@@ -9,7 +9,7 @@ def main() -> None:
     parser = ArgumentParser(prog='sbe-code-gen', description='SBE codec generator')
     parser.add_argument('--schema', help='path to xml schema', required=True)
     parser.add_argument('--destination', help='path to directory where codec will be written', required=True)
-    parser.add_argument('--generator', help=SUPPRESS, default='cpp')
+    parser.add_argument('--generator', help='choose generator (available: cpp, cppng)', default='cpp')
 
     args = parser.parse_args()
 
