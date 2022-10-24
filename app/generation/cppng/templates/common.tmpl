@@ -86,7 +86,7 @@ template<FixedString N>
 constexpr auto name = FieldName<N>();
 
 template<std::size_t N>
-using Length = std::integral_constant<std::size_t, N>;
+struct Length : std::integral_constant<std::size_t, N> {};
 
 template<auto N>
 struct Value {
@@ -145,6 +145,10 @@ struct ConstantField {
   [[nodiscard]] static constexpr auto value() noexcept {
     return static_cast<value_type>(CValue::value);
   }
+
+  [[nodiscard]] constexpr operator value_type() const noexcept {
+    return static_cast<value_type>(CValue::value);
+  }
 };
 
 template<FixedString Name, typename T, typename Length>
@@ -169,12 +173,22 @@ public:
     return true;
   }
 
-  [[nodiscard]] auto value() const noexcept requires(SingleElementLike<T, Length>) {
+  [[nodiscard]] value_type value() const noexcept requires(SingleElementLike<T, Length>) {
     return value_type(*dataBeginPtr());
   }
 
-  [[nodiscard]] auto value() const noexcept requires(ArrayLike<T, Length>) {
+  [[nodiscard]] value_type value() const noexcept requires(ArrayLike<T, Length> && !std::is_same_v<value_type, std::string_view>) {
     return value_type(dataBeginPtr(), Length::value);
+  }
+
+  [[nodiscard]] value_type value(bool trim = true) const noexcept requires(std::is_same_v<value_type, std::string_view>) {
+    auto result = std::string_view (dataBeginPtr(), Length::value);
+    if (trim) {
+      if (auto found = result.find('\0'); found != result.npos) {
+        result = result.substr(0, found);
+      }
+    }
+    return result;
   }
 
   void value(value_type value) noexcept requires(SingleElementLike<T, Length>) {
@@ -183,6 +197,27 @@ public:
 
   void value(value_type value) noexcept requires(ArrayLike<T, Length>) {
     std::memcpy(this->dataBeginPtr(), value.data(), Length::value * sizeof(underlying_type));
+  }
+
+  [[nodiscard]] constexpr operator value_type() const noexcept {
+    if constexpr (SingleElementLike<T, Length>) {
+      return value_type(*dataBeginPtr());
+    } else if constexpr (ArrayLike<T, Length>) {
+      return value_type(dataBeginPtr(), Length::value);
+    } else {
+      static_assert(sizeof(Name) + 1 == 0);
+    }
+  }
+
+  RequiredField& operator=(value_type value) noexcept {
+    if constexpr (SingleElementLike<T, Length>) {
+      std::memcpy(this->dataBeginPtr(), &value, sizeof(value));
+    } else if constexpr (ArrayLike<T, Length>) {
+      std::memcpy(this->dataBeginPtr(), value.data(), Length::value * sizeof(underlying_type));
+    } else {
+      static_assert(sizeof(Name) + 1 == 0);
+    }
+    return *this;
   }
 
 protected:
@@ -217,6 +252,17 @@ public:
   void value(std::nullptr_t) noexcept {
     auto const value = underlying_type(Null::value);
     std::memcpy(this->dataBeginPtr(), &value, sizeof(value));
+  }
+
+  OptionalField& operator=(std::nullptr_t) noexcept {
+    auto const value = underlying_type(Null::value);
+    std::memcpy(this->dataBeginPtr(), &value, sizeof(value));
+    return *this;
+  }
+
+  OptionalField& operator=(value_type value) noexcept {
+    RequiredField<Name, T, Length>::operator=(value);
+    return *this;
   }
 };
 
@@ -282,7 +328,8 @@ public:
   [[nodiscard]] value_type value() const {
     auto const size = this->size();
     auto result = value_type(dataBeginPtr(), size);
-    sbePosition(initialPosition_ + sizeof(length_type) + size * sizeof(underlying_type));
+    const_cast<DataField&>(*this).sbePosition(initialPosition_ + sizeof(length_type) + size * sizeof(underlying_type));
+    return result;
   }
 
   void value(value_type value) {
@@ -290,6 +337,11 @@ public:
     *this->lengthBeginPtr() = size;
     std::memcpy(dataBeginPtr(), value.data(), size * sizeof(underlying_type));
     sbePosition(initialPosition_ + sizeof(length_type) + size * sizeof(underlying_type));
+  }
+
+  void value(std::nullptr_t) {
+    *this->lengthBeginPtr() = 0;
+    sbePosition(initialPosition_ + sizeof(length_type));
   }
 
   std::size_t sbeCheckPosition(std::size_t position) const {
