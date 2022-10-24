@@ -2,7 +2,7 @@
 [[nodiscard]] static constexpr std::size_t fieldsCount() noexcept { return {{ fields | length }}; }
 
 template<std::size_t N>
-[[nodiscard]] decltype(auto) operator[](std::integral_constant<std::size_t, N>) const noexcept {
+[[nodiscard]] decltype(auto) operator[](FieldNo<N>) const noexcept {
 {% for field in fields %}
   if constexpr (N == {{ loop.index0 }}) {
     return {{ define_property(class_name, field) }};
@@ -13,12 +13,12 @@ template<std::size_t N>
 }
 
 template<FixedString N>
-[[nodiscard]] decltype(auto) operator[](Value<N>) const noexcept {
+[[nodiscard]] decltype(auto) operator[](FieldName<N>) const noexcept {
   using namespace std::string_view_literals;
 
 {% for field in fields %}
   if constexpr (static_cast<std::string_view>(N) == "{{ field.name }}"sv) {
-     return this->operator[](std::integral_constant<std::size_t, {{ loop.index0 }}>());
+     return this->operator[](FieldNo<{{ loop.index0 }}>());
   } else {{- '' -}}
 {%- endfor %} {
     static_assert(sizeof(N) + 1 == 0, "invalid template argument");
