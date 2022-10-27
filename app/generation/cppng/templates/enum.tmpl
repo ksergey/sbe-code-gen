@@ -35,19 +35,21 @@ public:
     return enumerated(value_);
   }
 
-  [[nodiscard]] static constexpr char const* toString({{ enum_class_name }} value) noexcept {
+  [[nodiscard]] static constexpr std::string_view toString({{ enum_class_name }} value) noexcept {
+    using namespace std::string_view_literals;
+
     switch (value) {
 {% for validValue in type.validValues %}
       case {{ enum_class_name }}::{{ validValue.name }}:
-        return "{{ validValue.name }}";
+        return "{{ validValue.name }}"sv;
 {% endfor %}
       default:
         break;
     }
-    return "";
+    return ""sv;
   }
 
-  [[nodiscard]] static constexpr {{ enum_class_name }} fromString(char const* value) noexcept {
+  [[nodiscard]] static constexpr {{ enum_class_name }} fromString(std::string_view value) noexcept {
     using namespace std::string_view_literals;
 {% for validValue in type.validValues %}
     if ("{{ validValue.name }}"sv == value) {

@@ -56,6 +56,14 @@ public:
     return *this = {{ message_class_name }}(buffer, offset + {{ header_class_name }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
   }
 
+  [[nodiscard]] static constexpr std::string_view name() noexcept {
+    return "{{ message.name }}";
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t id() noexcept {
+    return {{ message.id }};
+  }
+
   [[nodiscard]] char const* buffer() const noexcept {
     return buffer_;
   }

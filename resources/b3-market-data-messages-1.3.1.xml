@@ -3,29 +3,29 @@
 <!-- B3 Market Data Messages -->
 <!--
 =================================================================================
-History 
+History
 =================================================================================
-1.3   | 2022-02-10 | MBE-related messages are temporarily removed. 
+1.3   | 2022-02-10 | MBE-related messages are temporarily removed.
       |            | The IDs for MBE-related messages are reserved.
       |            | New message IncrementalRefresh_DeleteOrder_MBO_51.
-      |            | Only messages sent in phase 1 will be defined below. 
+      |            | Only messages sent in phase 1 will be defined below.
       |            | MBO messages are almost compatible with UMDF FAST messages now.
-1.3.1 | 2022-03-03 | TheoreticalOpeningPrice; sets 
+1.3.1 | 2022-03-03 | TheoreticalOpeningPrice; sets
 1.3.1 | 2022-03-08 | TradeDate for Statistics and Trades
-================================================================================= 
+=================================================================================
 -->
 
 <!-- Reference: https://github.com/real-logic/simple-binary-encoding -->
-<sbe:messageSchema 
-	xmlns:ns2="http://www.fixprotocol.org/ns/simple/1.0" 
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-	xmlns:sbe="http://fixprotocol.io/2016/sbe" 
-	package="b3.marketdata.umdf.sbe" 
+<sbe:messageSchema
+	xmlns:ns2="http://www.fixprotocol.org/ns/simple/1.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:sbe="http://fixprotocol.io/2016/sbe"
+	package="b3.marketdata.umdf.sbe"
 	id="2"
-	version="3" 
-	semanticVersion="1.3.1" 
-	description="B3 Market Data UMDF SBE messages" 
-	byteOrder="littleEndian" 
+	version="3"
+	semanticVersion="1.3.1"
+	description="B3 Market Data UMDF SBE messages"
+	byteOrder="littleEndian"
 	xsi:schemaLocation="http://fixprotocol.io/2016/sbe sbe.xsd">
 	<types>
 		<!-- Mandatory definitions -->
@@ -679,8 +679,8 @@ History
 		<field name="matchEventIndicator" id="37035" type="MatchEventIndicator" description="Identifies the end of the current event and if it is a retransmission" />
 	</sbe:message>
 
-<!-- 
-================================================================================= 
+<!--
+=================================================================================
 MBO + MBE messages - Includes reserved messages
 ================================================|ID|Since| FIX Equivalent =======
 IncrementalRefresh_OpeningPrice                 | 15 | 0 | 269=4, 286!=5
@@ -696,9 +696,9 @@ IncrementalRefresh_OpenInterest                 | 63 | 0 | 269=C
 IncrementalRefresh_TradeVolume                  | 52 | 0 | 269=B
 -->
 
-<!-- 
-================================================================================= 
-MBE Messages - Reserved 
+<!--
+=================================================================================
+MBE Messages - Reserved
 ================================================|ID|Since| FIX Equivalent =======
 IncrementalRefresh_New_MBE                      | 10 | 0 | 269=0 or 1, 279=0
 IncrementalRefresh_Cancel_MBE                   | 11 | 0 | 269=0 or 1, 279=2
@@ -709,7 +709,7 @@ IncrementalRefresh_TradeSummary_MBE             | 22 | 0 | 269=2, 279=0 (summary
 
 SnapshotFullRefresh_Header_MBE                  | 30 | 0 | 35=W
 SnapshotFullRefresh_Orders_MBE                  | 31 | 0 | 35=W
-================================================================================= 
+=================================================================================
 	 -->
 
 	<sbe:message name="IncrementalRefresh_OpeningPrice_15" id="15" description="Carries the summary information about opening trading session events per market data stream.">
@@ -818,7 +818,7 @@ SnapshotFullRefresh_Orders_MBE                  | 31 | 0 | 35=W
 		<field name="mDUpdateAction" id="279" type="MDUpdateAction" description="Update Action (NEW or DELETE)" />
 		<field name="mDStreamID" id="1500" type="MDStreamID" description="The identifier or name of market data stream." />
 		<field name="matchEventIndicator" id="37035" type="MatchEventIndicator" description="Identifies the end of the current event and if it is a retransmission" />
-	</sbe:message>	
+	</sbe:message>
 	<sbe:message name="IncrementalRefresh_LowPrice_25" id="25" description="The lowest price traded for the security in the trading session.">
 		<field name="messageType" id="35" type="MessageType" presence="constant" valueRef="MessageType.MarketDataIncrementalRefresh" />
 		<field name="applVerID" id="1128" type="ApplVerID" presence="constant" description="Specifies the service pack release being applied at message level" valueRef="ApplVerID.FIX50SP2" />
@@ -832,7 +832,7 @@ SnapshotFullRefresh_Orders_MBE                  | 31 | 0 | 35=W
 		<field name="mDUpdateAction" id="279" type="MDUpdateAction" description="Update Action (NEW or DELETE)" />
 		<field name="mDStreamID" id="1500" type="MDStreamID" description="The identifier or name of market data stream." />
 		<field name="matchEventIndicator" id="37035" type="MatchEventIndicator" description="Identifies the end of the current event and if it is a retransmission" />
-	</sbe:message>	
+	</sbe:message>
 	<sbe:message name="IncrementalRefresh_LastTradePrice_27" id="27" description="The latest price traded for the security in the trading session.">
 		<field name="messageType" id="35" type="MessageType" presence="constant" valueRef="MessageType.MarketDataIncrementalRefresh" />
 		<field name="applVerID" id="1128" type="ApplVerID" presence="constant" description="Specifies the service pack release being applied at message level"  valueRef="ApplVerID.FIX50SP2" />
@@ -865,14 +865,14 @@ SnapshotFullRefresh_Orders_MBE                  | 31 | 0 | 35=W
 	</sbe:message>
 <!--
 ===========================================================================
-	MBO Messages 
+	MBO Messages
 ================================================|ID|Since| FIX Equivalent =======
 IncrementalRefresh_Order_MBO                    | 50 | 0 | 269=0 or 1, 279=0 or 2
 IncrementalRefresh_DeleteOrder_MBO              | 51 | 3 | 269=0 or 1, 279=2
 IncrementalRefresh_Trade_MBO                    | 53 | 0 | 269=2, 279=0
 SnapshotFullRefresh_Orders_MBO                  | 71 | 0 | 35=W
-================================================================================= 
--->	
+=================================================================================
+-->
 	<sbe:message name="IncrementalRefresh_Order_MBO_50" id="50" description="Disseminates the creation or modification of a new order.">
 		<field name="messageType" id="35" type="MessageType" presence="constant" valueRef="MessageType.MarketDataIncrementalRefresh" />
 		<field name="applVerID" id="1128" type="ApplVerID" presence="constant" description="Specifies the service pack release being applied at message level"  valueRef="ApplVerID.FIX50SP2" />
