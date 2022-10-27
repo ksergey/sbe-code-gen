@@ -111,16 +111,6 @@ concept StringLike = std::is_same_v<typename Type<T, Length>::value_type, std::s
 template<class T, class Length>
 concept SingleElementLike = (Length::value == 1);
 
-template<class T>
-concept isAggregate = requires {
-  typename T::aggregate_type;
-};
-
-template<class T>
-concept isSequence = requires {
-  typename T::sequence_type;
-};
-
 template<FixedString Name, typename T, typename Length, typename CValue>
 struct ConstantField {
   using value_type = typename Type<T, Length>::value_type;
@@ -364,5 +354,34 @@ private:
     return std::bit_cast<underlying_type*>(buffer_ + initialPosition_ + sizeof(length_type));
   }
 };
+
+template<typename T>
+concept isAggregate = requires {
+  typename T::aggregate_type;
+};
+
+template<typename T>
+concept isSequence = requires {
+  typename T::sequence_type;
+};
+
+template<typename T>
+concept isTypeComposite = requires {
+  typename T::composite_type;
+};
+
+template<typename T>
+concept isTypeEnum = requires {
+  typename T::enum_type;
+};
+
+template<typename T>
+concept isTypeSet = requires {
+  typename T::set_type;
+};
+
+template<typename T>
+using FieldT = typename T::value_type;
+
 {{ '' -}}
 {% endblock %}

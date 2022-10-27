@@ -27,6 +27,8 @@ private:
   std::uint16_t actingVersion_ = 0;
 
 public:
+  using group_type = void;
+
   using sequence_type = void;
 
   {{ group_class_name }}(char* buffer, std::size_t* pos, std::uint16_t actingVersion, std::size_t bufferLength) {
@@ -42,7 +44,7 @@ public:
     *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
   }
 
-  void reset(std::size_t count) {
+  {{group_class_name}}& reset(std::size_t count) {
     if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
         throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
     }
@@ -56,6 +58,8 @@ public:
     dimensions["numInGroup"_name].value(count_);
 
     *positionPtr_ = initialPosition_ + {{ dimensions_type_class_name }}::encodedLength();
+
+    return *this;
   }
 
   [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
@@ -85,7 +89,7 @@ public:
     return index_ < count_;
   }
 
-  void next() {
+  {{ group_class_name }}& next() {
     if (index_ >= count_) {
       throw std::runtime_error("index >= count [E108]");
     }
@@ -95,6 +99,8 @@ public:
     }
     *positionPtr_ = offset_ + blockLength_;
     ++index_;
+
+    return *this;
   }
 
   std::size_t resetCountToIndex() {

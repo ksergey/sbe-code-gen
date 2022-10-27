@@ -10,6 +10,10 @@ private:
   {{ underlying_type }} value_ = 0;
 
 public:
+  using set_type = void;
+
+  using underlying_type = {{ underlying_type }};
+
 {% for choice in type.choices %}
   static constexpr auto {{ choice.name | format_constant_name }} = {{ underlying_type }}(1 << {{ choice.value }});
 {% endfor %}

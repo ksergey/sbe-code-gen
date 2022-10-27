@@ -18,7 +18,7 @@ Now encode message in c++ application (`main.cpp`):
 #include <cstdlib>
 #include <iostream>
 
-#include "schema/Schema.h"
+#include "schema/schema.h"
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   namespace sbe = b3::marketdata::umdf::sbe;
@@ -57,7 +57,7 @@ Now encode message in c++ application (`main.cpp`):
 #include <iostream>
 #include <utility>
 
-#include "schema/Schema.h"
+#include "schema/schema.h"
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   using namespace b3::marketdata::umdf::sbe;

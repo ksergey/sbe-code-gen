@@ -10,6 +10,10 @@ private:
   {{ underlying_type }} value_;
 
 public:
+  using enum_type = void;
+
+  using underlying_type = {{ underlying_type }};
+
   enum enumerated : {{ underlying_type }} {
 {% for validValue in type.validValues %}
   {% if type.encodingType == 'char' %}
