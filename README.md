@@ -119,6 +119,6 @@ g++ main.cpp -o main -std=c++2a
 - [ ] cmake integration
 - [ ] rust support?
 - [ ] python support?
-- [x] (cppng) from/to json serialization (`example/example_json.cpp`)
+- [x] (cppng) from/to json serialization ([impl](example/example_json.cpp))
 - [ ] (cppng) set/get fixed-length strings as variable length string (trim till '\0')
 - [ ] tests
