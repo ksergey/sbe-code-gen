@@ -152,7 +152,7 @@ private:
 void jsonSerialize0() {
   char buffer[512];
 
-  auto message = IncrementalRefresh_EmptyBook_9().wrapAndApplyHeader(buffer, 0, sizeof(buffer));
+  auto message = IncrementalRefresh_EmptyBook_9::wrapAndApplyHeader(buffer, 0, sizeof(buffer));
   message["securityID"_name] = 991;
   message["matchEventIndicator"_name] = MatchEventIndicator().clear().lastTradeMsg(true).lastQuoteMsg(true);
 

@@ -37,23 +37,14 @@ public:
           std::uint16_t actingVersion)
       : {{ message_class_name }}(buffer, 0, bufferLength, actingBlockLength, actingVersion) {}
 
-  {{ message_class_name }}& wrapForEncode(char* buffer, std::size_t offset, std::size_t bufferLength) {
-    return *this = {{ message_class_name }}(buffer, offset, bufferLength, sbeBlockLength(), sbeSchemaVersion());
-  }
-
-  {{ message_class_name }}& wrapForDecode(char* buffer, std::size_t offset, std::size_t actingBlockLength,
-          std::uint16_t actingVersion, std::size_t bufferLength) {
-    return *this = {{ message_class_name }}(buffer, offset, bufferLength, actingBlockLength, actingVersion);
-  }
-
-  {{ message_class_name }}& wrapAndApplyHeader(char* buffer, std::size_t offset, std::size_t bufferLength) {
+  static {{ message_class_name }} wrapAndApplyHeader(char* buffer, std::size_t offset, std::size_t bufferLength) {
     auto header = MessageHeader(buffer, offset, bufferLength, sbeSchemaVersion());
     header["blockLength"_name].value(sbeBlockLength());
     header["templateId"_name].value(sbeTemplateId());
     header["schemaId"_name].value(sbeSchemaId());
     header["version"_name].value(sbeSchemaVersion());
 
-    return *this = {{ message_class_name }}(buffer, offset + {{ header_class_name }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
+    return {{ message_class_name }}(buffer, offset + {{ header_class_name }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
   }
 
   [[nodiscard]] static constexpr std::string_view name() noexcept {
@@ -120,7 +111,7 @@ public:
   }
 
   {{ message_class_name }}& sbeRewind() {
-    return wrapForDecode(buffer_, offset_, actingBlockLength_, actingVersion_, bufferLength_);
+    return *this = {{ message_class_name }}(buffer_, offset_, bufferLength_, actingBlockLength_, actingVersion_);
   }
 
   [[nodiscard]] std::size_t encodedLength() const noexcept {
