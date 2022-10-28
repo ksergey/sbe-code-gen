@@ -20,11 +20,11 @@ private:
   std::size_t bufferLength_ = 0;
   std::size_t initialPosition_ = 0;
   std::size_t* positionPtr_ = nullptr;
-  std::size_t blockLength_ = 0;
+  std::size_t actingBlockLength_ = 0;
+  std::uint16_t actingVersion_ = 0;
   std::size_t count_ = 0;
   std::size_t index_ = 0;
   std::size_t offset_ = 0;
-  std::uint16_t actingVersion_ = 0;
 
 public:
   using group_type = void;
@@ -35,7 +35,7 @@ public:
     {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
     buffer_ = buffer;
     bufferLength_ = bufferLength;
-    blockLength_ = dimensions["blockLength"_name].value();
+    actingBlockLength_ = dimensions["blockLength"_name].value();
     count_ = dimensions["numInGroup"_name].value();
     index_ = 0;
     actingVersion_ = actingVersion;
@@ -50,7 +50,7 @@ public:
     }
 
     count_ = count;
-    blockLength_ = sbeBlockLength();
+    actingBlockLength_ = sbeBlockLength();
     index_ = 0;
 
     {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
@@ -81,6 +81,14 @@ public:
     *positionPtr_ = sbeCheckPosition(position);
   }
 
+  [[nodiscard]] std::size_t actingBlockLength() const noexcept {
+    return actingBlockLength_;
+  }
+
+  [[nodiscard]] std::uint16_t actingVersion() const noexcept {
+    return actingVersion_;
+  }
+
   [[nodiscard]] std::size_t count() const noexcept {
     return count_;
   }
@@ -94,10 +102,10 @@ public:
       throw std::runtime_error("index >= count [E108]");
     }
     offset_ = *positionPtr_;
-    if ((offset_ + blockLength_) > bufferLength_) [[unlikely]] {
+    if ((offset_ + actingBlockLength_) > bufferLength_) [[unlikely]] {
       throw std::runtime_error("buffer too short for next group index [E108]");
     }
-    *positionPtr_ = offset_ + blockLength_;
+    *positionPtr_ = offset_ + actingBlockLength_;
     ++index_;
 
     return *this;
