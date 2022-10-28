@@ -19,7 +19,7 @@
 {% endblock %}
 
 {% if schema.package != None %}
-namespace {{ schema.package | join('::') }} {
+namespace {{ schema.package | join('::') | replace(' ', '_') }} {
 {% else %}
 namespace sbe {
 {% endif %}
@@ -28,7 +28,7 @@ namespace sbe {
 {% endblock %}
 
 {% if schema.package != None %}
-} // namespace {{ schema.package | join('::') }}
+} // namespace {{ schema.package | join('::') | replace(' ', '_') }}
 {% else %}
 } // namespace sbe
 {% endif %}

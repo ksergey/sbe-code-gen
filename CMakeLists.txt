@@ -22,6 +22,7 @@ function(SBEMakeCodec TARGET)
   )
 
   add_library(${TARGET} INTERFACE)
+  target_compile_features(${TARGET} INTERFACE cxx_std_20)
   target_sources(${TARGET} PUBLIC ${PARSED_OUTPUT}/schema.h)
   target_include_directories(${TARGET} INTERFACE "${PARSED_OUTPUT}")
 endfunction()
@@ -32,4 +33,5 @@ add_custom_target(InstallRequirements
   COMMENT install requirements
 )
 
+add_subdirectory(tests EXCLUDE_FROM_ALL)
 add_subdirectory(example EXCLUDE_FROM_ALL)

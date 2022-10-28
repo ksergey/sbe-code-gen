@@ -2,6 +2,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license
 
 import importlib
+import sys
 from argparse import ArgumentParser, SUPPRESS
 from app.parser import Parser
 
@@ -22,7 +23,7 @@ def main() -> None:
         generator.generate(schema)
 
     except Exception as e:
-        print(e)
+        sys.exit(e)
 
 if __name__ == '__main__':
     main()

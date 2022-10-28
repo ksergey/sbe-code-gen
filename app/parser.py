@@ -60,7 +60,7 @@ class Parser:
         return Schema(
             package = attr(self.root, 'package', default=None),
             id = attr(self.root, 'id', cast=int),
-            version = attr(self.root, 'version', cast=int),
+            version = attr(self.root, 'version', 0, cast=int),
             semanticType = attr(self.root, 'semanticType', None),
             byteOrder = attr(self.root, 'byteOrder', 'littleEndian', cast=ByteOrder),
             description = attr(self.root, 'description', None),
