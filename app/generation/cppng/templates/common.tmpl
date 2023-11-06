@@ -5,7 +5,7 @@ template<std::size_t N>
 struct FixedString {
   char storage[N + 1] = {};
 
-  constexpr FixedString(char const* str) noexcept {
+  /* constexpr */ consteval FixedString(char const* str) noexcept {
     for (std::size_t i = 0; i != N; ++i) {
       storage[i] = str[i];
     }
