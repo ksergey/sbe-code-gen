@@ -21,31 +21,35 @@ public:
     return root_;
   }
 
-  template<typename Entry>
+  template <typename Entry>
   JsonSerializer& operator()(Entry entry) {
     root_ = json::object();
     root_["_name"] = entry.name();
     root_["_id"] = entry.id();
 
     std::invoke(
-        [&]<std::size_t... I>(std::index_sequence<I...>) { ((*this)(entry[idx<I>], root_), ...); },
+        [&]<std::size_t... I>(std::index_sequence<I...>) {
+          ((*this)(entry[idx<I>], root_), ...);
+        },
         std::make_index_sequence<Entry::fieldsCount()>());
 
     return *this;
   }
 
-  template<typename Entry>
+  template <typename Entry>
   JsonSerializer& operator()(Entry entry, json& node) {
-    if constexpr (isAggregate<Entry>) {
+    if constexpr (Aggregate<Entry>) {
       auto child = json::object();
 
       std::invoke(
-          [&]<std::size_t... I>(std::index_sequence<I...>) { ((*this)(entry[idx<I>], child), ...); },
+          [&]<std::size_t... I>(std::index_sequence<I...>) {
+            ((*this)(entry[idx<I>], child), ...);
+          },
           std::make_index_sequence<Entry::fieldsCount()>());
 
       node[entry.name()] = child;
 
-    } else if constexpr (isSequence<Entry>) {
+    } else if constexpr (Sequence<Entry>) {
       auto child = json::array();
 
       while (entry.hasNext()) {
@@ -54,7 +58,9 @@ public:
         auto element = json::object();
 
         std::invoke(
-            [&]<std::size_t... I>(std::index_sequence<I...>) { ((*this)(entry[idx<I>], element), ...); },
+            [&]<std::size_t... I>(std::index_sequence<I...>) {
+              ((*this)(entry[idx<I>], element), ...);
+            },
             std::make_index_sequence<Entry::fieldsCount()>());
 
         child.push_back(element);
@@ -64,9 +70,9 @@ public:
     } else {
       using ValueT = typename Entry::value_type;
 
-      if constexpr (isTypeEnum<ValueT>) {
+      if constexpr (Enum<ValueT>) {
         node[entry.name()] = ValueT::toString(entry.value());
-      } else if constexpr (isTypeSet<ValueT>) {
+      } else if constexpr (Set<ValueT>) {
         node[entry.name()] = entry.value().raw();
       } else {
         node[entry.name()] = entry.value();
@@ -88,31 +94,37 @@ public:
 
   JsonParser(std::string_view input) : JsonParser(json::parse(input)) {}
 
-  template<typename Entry>
+  template <typename Entry>
   Entry parse(char* buffer, std::size_t size) {
     auto result = Entry(buffer, size);
 
     std::invoke(
-        [&]<std::size_t... I>(std::index_sequence<I...>) { (this->process(result[idx<I>], input_), ...); },
+        [&]<std::size_t... I>(std::index_sequence<I...>) {
+          (this->process(result[idx<I>], input_), ...);
+        },
         std::make_index_sequence<Entry::fieldsCount()>());
 
     return result;
   }
 
-  template<typename Entry>
+  template <typename Entry>
   void operator()(Entry entry, json const& node) {
-    if constexpr (isAggregate<Entry>) {
+    if constexpr (Aggregate<Entry>) {
       std::invoke(
-          [&]<std::size_t... I>(std::index_sequence<I...>) { (this->process(entry[idx<I>], node), ...); },
+          [&]<std::size_t... I>(std::index_sequence<I...>) {
+            (this->process(entry[idx<I>], node), ...);
+          },
           std::make_index_sequence<Entry::fieldsCount()>());
-    } else if constexpr (isSequence<Entry>) {
+    } else if constexpr (Sequence<Entry>) {
       entry.reset(node.size());
 
       for (auto const& child : node) {
         entry.next();
 
         std::invoke(
-            [&]<std::size_t... I>(std::index_sequence<I...>) { (this->process(entry[idx<I>], child), ...); },
+            [&]<std::size_t... I>(std::index_sequence<I...>) {
+              (this->process(entry[idx<I>], child), ...);
+            },
             std::make_index_sequence<Entry::fieldsCount()>());
       }
     } else {
@@ -126,9 +138,9 @@ public:
           }
         }
 
-        if constexpr (isTypeEnum<ValueT>) {
+        if constexpr (Enum<ValueT>) {
           entry.value(ValueT::fromString(node.template get<std::string_view>()));
-        } else if constexpr (isTypeSet<ValueT>) {
+        } else if constexpr (Set<ValueT>) {
           entry.value(ValueT(node.template get<typename ValueT::underlying_type>()));
         } else {
           entry.value(node.template get<ValueT>());
@@ -138,7 +150,7 @@ public:
   }
 
 private:
-  template<class Entry>
+  template <class Entry>
   void process(Entry entry, json const& node) {
     auto const found = node.find(entry.name());
     if (found != node.end()) {

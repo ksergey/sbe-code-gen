@@ -7,26 +7,30 @@
 
 using namespace b3::marketdata::umdf::sbe;
 
-template<typename Entry>
+template <typename Entry>
 void print(Entry entry, std::size_t pad = 0) {
-  if constexpr (isAggregate<Entry>) {
+  if constexpr (Aggregate<Entry>) {
     std::invoke(
-        [&]<std::size_t... I>(std::index_sequence<I...>) { (print(entry[idx<I>], pad + 2), ...); },
+        [&]<std::size_t... I>(std::index_sequence<I...>) {
+          (print(entry[idx<I>], pad + 2), ...);
+        },
         std::make_index_sequence<Entry::fieldsCount()>());
-  } else if constexpr (isSequence<Entry>) {
+  } else if constexpr (Sequence<Entry>) {
     while (entry.hasNext()) {
       entry.next();
 
       std::invoke(
-          [&]<std::size_t... I>(std::index_sequence<I...>) { (print(entry[idx<I>], pad + 2), ...); },
+          [&]<std::size_t... I>(std::index_sequence<I...>) {
+            (print(entry[idx<I>], pad + 2), ...);
+          },
           std::make_index_sequence<Entry::fieldsCount()>());
     }
   } else {
     using ValueT = typename Entry::value_type;
 
-    if constexpr (isTypeEnum<ValueT>) {
+    if constexpr (Enum<ValueT>) {
       fmt::print("{:{}} \"{}\" = \"{}\"\n", ' ', pad, entry.name(), ValueT::toString(entry.value()));
-    } else if constexpr (isTypeSet<ValueT>) {
+    } else if constexpr (Set<ValueT>) {
       fmt::print("{:{}} \"{}\" = {:#04x}\n", ' ', pad, entry.name(), entry.value().raw());
     } else if constexpr (std::is_same_v<ValueT, std::string_view>) {
       fmt::print("{:{}} \"{}\" = \"{}\"\n", ' ', pad, entry.name(), entry.value());
