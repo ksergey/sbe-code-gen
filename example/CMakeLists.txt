@@ -7,7 +7,7 @@ FetchContent_Declare(fmt
 FetchContent_MakeAvailable(fmt)
 
 FetchContent_Declare(nlohmann_json
-  URL https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent/archive/v3.11.2.tar.gz
+  URL https://github.com/nlohmann/json/archive/refs/tags/v3.11.2.tar.gz
   DOWNLOAD_EXTRACT_TIMESTAMP ON
 )
 FetchContent_MakeAvailable(nlohmann_json)
