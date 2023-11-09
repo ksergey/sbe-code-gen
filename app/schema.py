@@ -117,7 +117,7 @@ class Enum:
     sinceVersion: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
     offset: Optional[int] = field(default=None)
-    nullValue: Optional[str] = field(default=None),
+    nullValue: Optional[str] = field(default=None)
     validValueByName: Dict[str, ValidValue] = field(default_factory=dict)
 
     def encodedLength(self) -> int:
