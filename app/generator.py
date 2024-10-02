@@ -2,6 +2,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license
 
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from app.schema import *

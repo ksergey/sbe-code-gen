@@ -23,7 +23,7 @@ def main() -> None:
         generator.generate(schema)
 
     except Exception as e:
-        sys.exit(e)
+        sys.exit(f'error: {e}')
 
 if __name__ == '__main__':
     main()
