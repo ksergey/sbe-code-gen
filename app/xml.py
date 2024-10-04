@@ -6,17 +6,17 @@ import xml.etree.ElementTree as ET
 from typing import ClassVar, Optional, Any
 
 class SentinelClass:
-    _instance: ClassVar[Optional[SentinelClass]] = None
+    instance_: ClassVar[Optional[SentinelClass]] = None
 
     @staticmethod
     def getInstance() -> SentinelClass:
-        if SentinelClass._instance is None:
-            SentinelClass._instance = SentinelClass()
-        return SentinelClass._instance
+        if SentinelClass.instance_ is None:
+            SentinelClass.instance_ = SentinelClass()
+        return SentinelClass.instance_
 
 SENTINEL = SentinelClass.getInstance()
 
-def loadXMLFromFile(path: str) -> ET.Element:
+def load_xml_from_file(path: str) -> ET.Element:
     file = open(path, 'r', encoding='utf-8')
     it = ET.iterparse(file)
 

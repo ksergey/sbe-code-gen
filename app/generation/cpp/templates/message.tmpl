@@ -6,7 +6,7 @@
 {% block content %}
 
 {%- set message_class_name = message.name | format_class_name -%}
-{%- set header_class_name = schema.headerType.name | format_class_name -%}
+{%- set header_class_name = schema.header_type.name | format_class_name -%}
 
 class {{ message_class_name }} final {
 private:
@@ -100,7 +100,7 @@ public:
     }
 
     [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
-        return {{ message.blockLength }};
+        return {{ message.block_length }};
     }
 
     [[nodiscard]] static constexpr std::uint16_t sbeTemplateId() noexcept {

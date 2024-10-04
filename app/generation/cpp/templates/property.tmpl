@@ -5,32 +5,38 @@
 {% endmacro %}
 
 {% macro define_property(class_name, entry) %}
+{%- if 'reference_name' in entry %}
+    {% set method_name = entry.reference_name -%}
+{%- else %}
+    {% set method_name = entry.name -%}
+{%- endif %}
+
 {%- if entry.token == 'type' %}
-    {{- define_property_type(class_name, entry) -}}
+    {{- define_property_type(class_name, method_name, entry) -}}
 {%- elif entry.token == 'composite' %}
-    {{- define_property_composite(class_name, entry) -}}
+    {{- define_property_composite(class_name, methon_name, entry) -}}
 {%- elif entry.token == 'enum' %}
-    {{- define_property_enum(class_name, entry) -}}
+    {{- define_property_enum(class_name, method_name, entry) -}}
 {%- elif entry.token == 'set' %}
-    {{- define_property_set(class_name, entry) -}}
+    {{- define_property_set(class_name, method_name, entry) -}}
 {%- elif entry.token == 'field' %}
     {%- if entry.type.token == 'type' %}
-        {{- define_property_type(class_name, entry) -}}
+        {{- define_property_type(class_name, method_name, entry) -}}
     {%- elif entry.type.token == 'composite' %}
-        {{- define_property_composite(class_name, entry) -}}
+        {{- define_property_composite(class_name, method_name, entry) -}}
     {%- elif entry.type.token == 'enum' %}
-        {{- define_property_enum(class_name, entry) -}}
+        {{- define_property_enum(class_name, method_name, entry) -}}
     {%- elif entry.type.token == 'set' %}
-        {{- define_property_set(class_name, entry) -}}
+        {{- define_property_set(class_name, method_name, entry) -}}
     {%- endif %}
 {%- elif entry.token == 'group' %}
-    {{- define_property_group(class_name, entry) -}}
+    {{- define_property_group(class_name, method_name, entry) -}}
 {%- elif entry.token == 'data' %}
-    {{- define_property_data(class_name, entry) -}}
+    {{- define_property_data(class_name, method_name, entry) -}}
 {%- endif %}
 {% endmacro %}
 
-{% macro define_property_type(class_name, entry) -%}
+{% macro define_property_type(class_name, method_name, entry) -%}
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
 {%- else %}
@@ -38,28 +44,27 @@
 {%- endif %}
 
 {%- if type.length == 1 %}
-    {{- define_property_type_single(class_name, entry) }}
+    {{- define_property_type_single(class_name, method_name, entry) }}
 {%- elif type.length > 1 %}
-    {{- define_property_type_array(class_name, entry) }}
+    {{- define_property_type_array(class_name, method_name, entry) }}
 {%- endif %}
 {%- endmacro %}
 
-{% macro define_property_type_single(class_name, entry) %}
+{% macro define_property_type_single(class_name, method_name, entry) %}
 
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
 {%- else %}
     {% set type = entry -%}
 {%- endif %}
-{%- set method_name = entry.name -%}
-{%- set underlying_type = type.primitiveType | replace_keyword -%}
+{%- set underlying_type = type.primitive_type | replace_keyword -%}
 
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ underlying_type }} {{ method_name | format_method_name_get }}() noexcept {
-    {% if type.primitiveType == 'char' %}
-    return '{{ type.constValue }}';
+    {% if type.primitive_type == 'char' %}
+    return '{{ type.const_value }}';
     {% else %}
-    return {{ type.constValue }};
+    return {{ type.const_value }};
     {% endif %}
 }
 
@@ -82,7 +87,7 @@
 
 {%- if entry.presence == 'optional' %}
 {{ class_name }}& {{ method_name | format_method_name_reset }}() noexcept {
-    return {{ method_name | format_method_name_set }}({{ type.nullValue | replace_keyword }});
+    return {{ method_name | format_method_name_set }}({{ type.null_value | replace_keyword }});
 }
 
 {% endif %}
@@ -95,27 +100,26 @@
 
 {%- if entry.presence == 'optional' %}
 [[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    {% if type.primitiveType == 'double' or type.primitiveType == 'float' %}
-    constexpr {{ underlying_type }} null = {{ type.nullValue | replace_keyword }};
+    {% if type.primitive_type == 'double' or type.primitive_type == 'float' %}
+    constexpr {{ underlying_type }} null = {{ type.null_value | replace_keyword }};
     constexpr {{ underlying_type }} value = {{ method_name | format_method_name_get() }};
     return ((null != null && value != value) || (value != null));
     {% else %}
-    return {{ type.nullValue | replace_keyword }} != {{ method_name | format_method_name_get }}();
+    return {{ type.null_value | replace_keyword }} != {{ method_name | format_method_name_get }}();
     {% endif %}
 }
 {% endif %}
 {% endmacro %}
 
-{% macro define_property_type_array(class_name, entry) %}
+{% macro define_property_type_array(class_name, method_name, entry) %}
 
 {%- if entry.token == 'field' %}
     {%- set type = entry.type -%}
 {%- else %}
     {%- set type = entry -%}
 {%- endif %}
-{%- set method_name = entry.name -%}
-{%- set underlying_type = type.primitiveType | replace_keyword -%}
-{%- if type.primitiveType == 'char' %}
+{%- set underlying_type = type.primitive_type | replace_keyword -%}
+{%- if type.primitive_type == 'char' %}
     {% set value_type = 'std::string_view' -%}
 {%- else %}
     {% set value_type = 'std::span<' ~ underlying_type ~ ' const>' -%}
@@ -123,8 +127,8 @@
 
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ value_type }} {{ method_name | format_method_name_get }}() noexcept {
-    {% if type.primitiveType == 'char' %}
-    return "{{ type.constValue }}";
+    {% if type.primitive_type == 'char' %}
+    return "{{ type.const_value }}";
     {% else %}
     assert(false, "not implemeted");
     {% endif %}
@@ -139,7 +143,7 @@
 
 {% endif %}
 
-{%- if entry.presence != 'constant' and type.primitiveType != 'char' %}
+{%- if entry.presence != 'constant' and type.primitive_type != 'char' %}
 {{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
     if (value.size() != {{ type.length }}) [[unlikely]] {
         # TODO
@@ -151,12 +155,12 @@
 
 {% endif %}
 
-{%- if entry.presence != 'constant' and type.primitiveType == 'char' %}
+{%- if entry.presence != 'constant' and type.primitive_type == 'char' %}
 {{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
     std::size_t const lengthToCopy = std::min<std::size_t>(value.size(), {{ type.length }});
     std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), lengthToCopy);
     for (std::size_t i = lengthToCopy; i < {{ type.length }}; ++i) {
-        *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }} + i) = {{ type.nullValue | replace_keyword }};
+        *std::bit_cast<{{ underlying_type }}*>(buffer_ + offset_ + {{ entry.offset }} + i) = {{ type.null_value | replace_keyword }};
     }
     return *this;
 }
@@ -178,12 +182,12 @@
 
 {%- if entry.presence == 'optional' %}
 [[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    return {{ type.nullValue | replace_keyword }} != {{ method_name | format_method_name_get }}().front();
+    return {{ type.null_value | replace_keyword }} != {{ method_name | format_method_name_get }}().front();
 }
 {% endif %}
 {% endmacro %}
 
-{% macro define_property_composite(class_name, entry) %}
+{% macro define_property_composite(class_name, method_name, entry) %}
 
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
@@ -191,8 +195,7 @@
     {% set type = entry -%}
 {%- endif %}
 {%- set composite_class_name = type.name | format_class_name -%}
-{%- set method_name = entry.name -%}
-{%- set composite_first_entry_method_name = type.containedTypes[0].name -%}
+{%- set composite_first_entry_method_name = type.contained_types[0].name -%}
 
 [[nodiscard]] {{ composite_class_name }} {{ method_name | format_method_name_get }}() {
     return {{ composite_class_name }}(buffer_, offset_ + {{ entry.offset }}, bufferLength_, actingVersion_);
@@ -203,20 +206,19 @@
 }
 {% endmacro %}
 
-{% macro define_property_enum(class_name, entry) %}
+{% macro define_property_enum(class_name, method_name, entry) %}
 {%- if entry.token == 'field' %}
     {%- set type = entry.type -%}
 {%- else %}
     {%- set type = entry -%}
 {%- endif %}
-{%- if entry.valueRef != None %}
-    {%- set const_value = entry.valueRef -%}
+{%- if entry.value_ref != None %}
+    {%- set const_value = entry.value_ref -%}
 {%- else %}
     {%- set const_value = type.const_value -%}
 {%- endif %}
 {%- set enum_class_name = type.name | format_class_name -%}
-{%- set method_name = entry.name -%}
-{%- set underlying_type = type.encodingType | replace_keyword -%}
+{%- set underlying_type = type.encoding_type | replace_keyword -%}
 
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ enum_class_name }} {{ method_name | format_method_name_get }}() noexcept {
@@ -260,15 +262,14 @@
 {% endif %}
 {% endmacro %}
 
-{% macro define_property_set(class_name, entry) %}
+{% macro define_property_set(class_name, method_name, entry) %}
 {%- if entry.token == 'field' %}
     {% set type = entry.type -%}
 {%- else %}
     {% set type = entry -%}
 {%- endif %}
 {%- set set_class_name = entry.name | format_class_name -%}
-{%- set method_name = entry.name -%}
-{%- set underlying_type = type.encodingType | replace_keyword -%}
+{%- set underlying_type = type.encoding_type | replace_keyword -%}
 
 [[nodiscard]] {{ set_class_name }} {{ method_name | format_method_name_get }}() const {
     return {{ set_class_name }}(*std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }}));
@@ -284,11 +285,10 @@
 }
 {% endmacro %}
 
-{% macro define_property_group(class_name, entry) %}
+{% macro define_property_group(class_name, method_name, entry) %}
 {%- set group_class_name = entry.name | format_class_name -%}
-{%- set dimensions_type_class_name = entry.dimensionType.name | format_class_name -%}
-{%- set method_name = entry.name -%}
-{%- set num_in_group_type = (entry.dimensionType.containedTypes | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+{%- set dimensions_type_class_name = entry.dimension_type.name | format_class_name -%}
+{%- set num_in_group_type = (entry.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
 
 [[nodiscard]] {{ group_class_name }} {{ method_name | format_method_name_get }}() {
     return {{ group_class_name }}(buffer_, sbePositionPtr(), actingVersion_, bufferLength_);
@@ -299,15 +299,14 @@
 }
 {% endmacro %}
 
-{% macro define_property_data(class_name, entry) %}
+{% macro define_property_data(class_name, method_name, entry) %}
 {%- set type = entry.type -%}
-{%- set length_type = (type.containedTypes | selectattr('name', 'equalto', 'length') | first) -%}
-{%- set var_data_type = (type.containedTypes | selectattr('name', 'equalto', 'varData') | first) -%}
-{%- set method_name = entry.name -%}
-{%- set length_underlying_type = length_type.primitiveType | replace_keyword -%}
-{%- set data_underlying_type = var_data_type.primitiveType | replace_keyword -%}
+{%- set length_type = (type.contained_types | selectattr('name', 'equalto', 'length') | first) -%}
+{%- set var_data_type = (type.contained_types | selectattr('name', 'equalto', 'varData') | first) -%}
+{%- set length_underlying_type = length_type.primitive_type | replace_keyword -%}
+{%- set data_underlying_type = var_data_type.primitive_type | replace_keyword -%}
 
-{%- if var_data_type.primitiveType == 'char' or var_data_type.primitiveType == 'uint8' %}
+{%- if var_data_type.primitive_type == 'char' or var_data_type.primitive_type == 'uint8' %}
     {%- set data_underlying_type = 'char' -%}
     {%- set value_type = 'std::string_view' -%}
 {%- else %}

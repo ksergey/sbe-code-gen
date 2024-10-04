@@ -3,7 +3,7 @@
 {% block content %}
 
 {%- set enum_class_name = type.name | format_class_name -%}
-{%- set underlying_type = type.encodingType | replace_keyword -%}
+{%- set underlying_type = type.encoding_type | replace_keyword -%}
 
 class {{ enum_class_name }} final {
 private:
@@ -11,14 +11,14 @@ private:
 
 public:
     enum enumerated : {{ underlying_type }} {
-{% for validValue in type.validValues %}
-    {% if type.encodingType == 'char' %}
-        {{ validValue.name }} = '{{ validValue.value }}',
+{% for valid_value in type.valid_values %}
+    {% if type.encoding_type == 'char' %}
+        {{ valid_value.name }} = '{{ valid_value.value }}',
     {% else %}
-        {{ validValue.name }} = {{ validValue.value }},
+        {{ valid_value.name }} = {{ valid_value.value }},
     {% endif %}
 {% endfor %}
-        NULL_VALUE = {{ type.nullValue | replace_keyword }}
+        NULL_VALUE = {{ type.null_value | replace_keyword }}
     };
 
     constexpr {{ enum_class_name }}() noexcept
@@ -39,9 +39,9 @@ public:
 
     [[nodiscard]] static constexpr char const* toString({{ enum_class_name }} value) noexcept {
         switch (value) {
-{% for validValue in type.validValues %}
-            case {{ enum_class_name }}::{{ validValue.name }}:
-                return "{{ validValue.name }}";
+{% for valid_value in type.valid_values %}
+            case {{ enum_class_name }}::{{ valid_value.name }}:
+                return "{{ valid_value.name }}";
 {% endfor %}
             default:
                 break;
@@ -51,9 +51,9 @@ public:
 
     [[nodiscard]] static constexpr {{ enum_class_name }} fromString(char const* value) noexcept {
         using namespace std::string_view_literals;
-{% for validValue in type.validValues %}
-        if ("{{ validValue.name }}"sv == value) {
-            return {{ enum_class_name }}::{{ validValue.name }};
+{% for valid_value in type.valid_values %}
+        if ("{{ valid_value.name }}"sv == value) {
+            return {{ enum_class_name }}::{{ valid_value.name }};
         }
 {% endfor %}
         return NULL_VALUE;

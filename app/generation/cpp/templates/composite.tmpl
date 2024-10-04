@@ -42,7 +42,7 @@ public:
     }
 
     [[nodiscard]] static constexpr std::size_t encodedLength() noexcept {
-        return {{ type.encodedLength }};
+        return {{ type.encoded_length }};
     }
 
     [[nodiscard]] std::size_t offset() const noexcept {
@@ -73,7 +73,7 @@ public:
         return {{ schema.version }};
     }
 
-    {{ property.define(composite_class_name, type.containedTypes) | indent }}
+    {{ property.define(composite_class_name, type.contained_types) | indent }}
     {{- '' -}}
 };
 

@@ -17,11 +17,9 @@ def main() -> None:
     try:
         module = importlib.import_module(f'app.generation.{args.generator}')
         Generator = getattr(module, 'Generator')
-
-        schema = Parser.fromFile(args.schema).getSchema()
+        schema = Parser.from_file(args.schema).get_schema()
         generator = Generator(args.destination)
         generator.generate(schema)
-
     except Exception as e:
         sys.exit(f'error: {e}')
 

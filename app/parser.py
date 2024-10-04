@@ -16,7 +16,7 @@ class UniqueKeysDict(UserDict):
 
 class Parser:
     ''' Primitive types '''
-    PrimitiveTypeByName = UniqueKeysDict({
+    PRIMITIVE_TYPE_BY_NAME = UniqueKeysDict({
         'char':     PrimitiveType('char',   1,  "CHAR_NULL",    "CHAR_MIN",     "CHAR_MAX"),
         'int8':     PrimitiveType('int8',   1,  "INT8_NULL",    "INT8_MIN",     "INT8_MAX"),
         'int16':    PrimitiveType('int16',  2,  "INT16_NULL",   "INT16_MIN",    "INT16_MAX"),
@@ -31,472 +31,447 @@ class Parser:
     })
 
     ''' Primitive type names suitable for encodingType of enum '''
-    ValidPrimitiveTypeForEnum = [ 'char', 'uint8', 'uint16', 'uint32', 'uint64' ]
+    VALID_PRIMITIVE_TYPE_FOR_ENUM = [ 'char', 'uint8', 'uint16', 'uint32', 'uint64' ]
 
     ''' Primitive type names suitable for encodingType of set '''
-    ValidPrimitiveTypeForSet = [ 'uint8', 'uint16', 'uint32', 'uint64' ]
+    VALID_PRIMITIVE_TYPE_FOR_SET = [ 'uint8', 'uint16', 'uint32', 'uint64' ]
 
     def __init__(self, root: ET.Element) -> None:
         self.root = root
 
     @staticmethod
-    def fromFile(path: str) -> Parser:
-        root = loadXMLFromFile(path)
+    def from_file(path: str) -> Parser:
+        root = load_xml_from_file(path)
         return Parser(root)
 
     @staticmethod
-    def getPrimitiveType(name: str) -> PrimitiveType:
-        if name in Parser.PrimitiveTypeByName:
-            return Parser.PrimitiveTypeByName[name]
+    def get_primitive_type(name: str) -> PrimitiveType:
+        if name in Parser.PRIMITIVE_TYPE_BY_NAME:
+            return Parser.PRIMITIVE_TYPE_BY_NAME[name]
         else:
             raise Exception(f'primitive type "{name}" not found')
 
-    def getSchema(self) -> Schema:
-        headerTypeStr = attr(self.root, 'headerType', 'messageHeader')
-        headerType = self.getEncodedTypeByName(headerTypeStr)
-        if not isinstance(headerType, Composite) or not headerType.isValidHeaderType():
-            raise Exception(f'type "{headerType}" is not valid header type')
+    def get_schema(self) -> Schema:
+        header_type_str = attr(self.root, 'headerType', 'messageHeader')
+        header_type = self.get_encoded_type_by_name(header_type_str)
+        if not isinstance(header_type, Composite) or not header_type.is_valid_header_type():
+            raise Exception(f'type "{header_type_str}" is not valid header type')
 
         return Schema(
-            package = attr(self.root, 'package', default=None),
-            id = attr(self.root, 'id', cast=int),
-            version = attr(self.root, 'version', 0, cast=int),
-            semanticType = attr(self.root, 'semanticType', None),
-            byteOrder = attr(self.root, 'byteOrder', 'littleEndian', cast=ByteOrder),
-            description = attr(self.root, 'description', None),
-            headerType = headerType,
-            types = self.getTypes(),
-            messages = self.getMessages()
+            package=attr(self.root, 'package', default=None),
+            id=attr(self.root, 'id', cast=int),
+            version=attr(self.root, 'version', 0, cast=int),
+            semantic_type=attr(self.root, 'semanticType', None),
+            byte_order=attr(self.root, 'byteOrder', 'littleEndian', cast=ByteOrder),
+            description=attr(self.root, 'description', None),
+            header_type=header_type,
+            types=self.get_types(),
+            messages=self.get_messages()
         )
 
-    def getTypes(self) -> Dict[str, EncodedType]:
+    def get_types(self) -> Dict[str, EncodedType]:
         types = UniqueKeysDict()
-
         # add generic types
-        for primitiveType in Parser.PrimitiveTypeByName.values():
-            type = self.getPrimitiveTypeAsEncodedType(primitiveType)
-            types[type.name] = type
-
+        for primitive_type in Parser.PRIMITIVE_TYPE_BY_NAME.values():
+            encoded_type = Parser.get_primitive_type_as_encoded_type(primitive_type)
+            types[encoded_type.name] = encoded_type
         # load types from xml
         for node in self.root.findall('./types/*'):
-            type = self.getEncodedType(node)
-            types[type.name] = type
-
+            encoded_type = self.parse_encoded_type_from_node(node)
+            types[encoded_type.name] = encoded_type
         return types
 
-    def getMessages(self) -> Dict[str, Message]:
-        messageByName = UniqueKeysDict()
-        messageByID = UniqueKeysDict()
+    def get_messages(self) -> Dict[str, Message]:
+        message_by_name = UniqueKeysDict()
+        message_by_id = UniqueKeysDict()
         for child in self.root.findall('./message'):
-            message = self.getMessage(child)
-            messageByName[message.name] = message
-            messageByID[message.id] = message
-        return messageByName
+            message = self.parse_message_from_node(child)
+            message_by_name[message.name] = message
+            message_by_id[message.id] = message
+        return message_by_name
 
     @staticmethod
-    def getPrimitiveTypeAsEncodedType(primitiveType: PrimitiveType) -> Type:
+    def get_primitive_type_as_encoded_type(primitive_type: PrimitiveType) -> Type:
         return Type(
-            name = primitiveType.name,
-            description = None,
-            presence = Presence.REQUIRED,
-            nullValue = None,
-            minValue = None,
-            maxValue = None,
-            length = 1,
-            offset = None,
-            primitiveType = primitiveType,
-            semanticType = None,
-            sinceVersion = 0,
-            deprecated = None,
-            constValue = None
+            name=primitive_type.name,
+            description=None,
+            presence=Presence.REQUIRED,
+            null_value=None,
+            min_value=None,
+            max_value=None,
+            length=1,
+            offset=None,
+            primitive_type=primitive_type,
+            semantic_type=None,
+            since_version=0,
+            deprecated=None,
+            const_value=None
         )
 
-    def getType(self, node: ET.Element, offset: Optional[int] = None) -> Type:
-        nameStr = attr(node, 'name')
+    def parse_type_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Type:
+        name_str = attr(node, 'name')
         presence = attr(node, 'presence', Presence.REQUIRED, cast=Presence)
         length = attr(node, 'length', 1, cast=int)
-        primitiveType = Parser.getPrimitiveType(attr(node, 'primitiveType'))
-        valueRef = attr(node, 'valueRef', None)
-        constValue = None
+        primitive_type = Parser.get_primitive_type(attr(node, 'primitiveType'))
+        value_ref = attr(node, 'valueRef', None)
+        const_value = None
 
-        '''
-        For presence=constant
-            constValue = node.text on valueRef not set
-            constValue = valueRef on valueRef set
-        '''
-        if valueRef != None:
+        # For presence=constant
+        #     constValue = node.text on valueRef not set
+        #     constValue = valueRef on valueRef set
+        if value_ref != None:
             if presence != Presence.CONSTANT:
-                raise Exception(f'presence must be constant when valueRef is set (type "{nameStr}")')
-            if not self.isValidValueRef(valueRef):
-                raise Exception(f'valueRef "{valueRef}" of type "{nameStr}" is not valid')
+                raise Exception(f'presence must be constant when valueRef is set (type "{name_str}")')
+            if not self.is_valid_value_ref(value_ref):
+                raise Exception(f'valueRef "{value_ref}" of type "{name_str}" is not valid')
 
         if presence == Presence.CONSTANT:
-            if valueRef == None:
-                constValue = node.text.strip()
-                if constValue == '':
-                    raise Exception(f'node text is empty and valueRef is not set for constant type "{nameStr}"')
-                if primitiveType.name == 'char' and len(constValue) != length:
-                    raise Exception(f'node text length is not equal to field length for constant type "{nameStr}"')
+            if value_ref == None:
+                const_value = node.text.strip()
+                if const_value == '':
+                    raise Exception(f'node text is empty and value_ref is not set for constant type "{name_str}"')
+                if primitive_type.name == 'char' and len(const_value) != length:
+                    raise Exception(f'node text length is not equal to field length for constant type "{name_str}"')
             else:
-                enumName, enumValueName = valueRef.split('.')
-                enumType = self.getEncodedTypeByName(enumName)
-                assert (isinstance(enumType, Enum)), "not an enum type"
-                constValue = enumType.validValueByName[enumValueName].value
+                enum_name, enum_value_name = value_ref.split('.')
+                enum_type = self.get_encoded_type_by_name(enum_name)
+                if not isinstance(enum_type, Enum):
+                    raise Exception(f'"{name_str}" is not enum type')
+                const_value = enum_type.valid_value_by_name[enum_value_name].value
 
-        characterEncoding = None
-        if primitiveType.name == 'char':
-            characterEncoding = attr(node, 'characterEncoding', "US-ASCII")
+        character_encoding = None
+        if primitive_type.name == 'char':
+            character_encoding = attr(node, 'characterEncoding', "US-ASCII")
         else:
-            characterEncoding = attr(node, 'characterEncoding', None)
-        if characterEncoding != None:
-            characterEncoding.strip()
+            character_encoding = attr(node, 'characterEncoding', None)
+        if character_encoding != None:
+            character_encoding.strip()
 
         return Type(
-            name = nameStr,
-            description = attr(node, 'description', None),
-            presence = presence,
-            nullValue = attr(node, 'nullValue', None),
-            minValue = attr(node, 'minValue', None),
-            maxValue = attr(node, 'maxValue', None),
-            length = length,
-            offset = attr(node, 'offset', offset, cast=int),
-            primitiveType = primitiveType,
-            semanticType = attr(node, 'semanticType', None),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int),
-            valueRef = valueRef,
-            constValue = constValue,
-            characterEncoding = characterEncoding
+            name=name_str,
+            description=attr(node, 'description', None),
+            presence=presence,
+            null_value=attr(node, 'nullValue', None),
+            min_value=attr(node, 'minValue', None),
+            max_value=attr(node, 'maxValue', None),
+            length=length,
+            offset=attr(node, 'offset', offset, cast=int),
+            primitive_type=primitive_type,
+            semantic_type=attr(node, 'semanticType', None),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
+            value_ref=value_ref,
+            const_value=const_value,
+            character_encoding=character_encoding
         )
 
-    def getComposite(self, node: ET.Element, offset: Optional[int] = None) -> Composite:
-        nameStr = attr(node, 'name')
-
+    def parse_composite_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Composite:
+        name_str = attr(node, 'name')
         # used for compute offset for each type inside composite
-        computedOffset = 0
+        computed_offset = 0
+        contained_types = UniqueKeysDict()
 
-        containedTypes = UniqueKeysDict()
         for child in node:
-            type = None
+            contained_type = None
             if child.tag == 'type':
-                type = self.getType(child, offset=computedOffset)
+                contained_type = self.parse_type_from_node(child, offset=computed_offset)
             elif child.tag == 'composite':
-                type = self.getComposite(child, offset=computedOffset)
+                contained_type = self.parse_composite_from_node(child, offset=computed_offset)
             elif child.tag == 'enum':
-                type = self.getEnum(child, offset=computedOffset)
+                contained_type = self.parse_enum_from_node(child, offset=computed_offset)
             elif child.tag == 'set':
-                type = self.getSet(child, offset=computedOffset)
+                contained_type = self.parse_set_from_node(child, offset=computed_offset)
             elif child.tag == 'ref':
-                type = self.getRef(child, offset=computedOffset)
+                contained_type = self.parse_ref_from_node(child, offset=computed_offset)
             else:
-                raise Exception(f'unknown composite type "{nameStr}" child node "{child.tag}"')
+                raise Exception(f'unknown composite type "{name_str}" child node "{child.tag}"')
 
-            if computedOffset > type.offset:
-                raise Exception(f'invalid type offset "{type.name}" inside composite type "{nameStr}"')
+            if computed_offset > contained_type.offset:
+                raise Exception(f'invalid offset of type "{contained_type.name}" inside composite type "{name_str}"')
 
-            computedOffset = type.offset + type.encodedLength();
-            containedTypes[type.name] = type
+            computed_offset = contained_type.offset + contained_type.encoded_length();
+            contained_types[contained_type.name] = contained_type
 
         return Composite(
-            name = nameStr,
-            offset = attr(node, 'offset', offset, cast=int),
-            description = attr(node, 'description', None),
-            semanticType = attr(node, 'semanticType', None),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int),
-            containedTypes = containedTypes
+            name=name_str,
+            offset=attr(node, 'offset', offset, cast=int),
+            description=attr(node, 'description', None),
+            semantic_type=attr(node, 'semanticType', None),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
+            contained_types=contained_types
         )
 
-    def getValidValue(self, node: ET.Element) -> ValidValue:
+    def parse_valid_value_from_node(self, node: ET.Element) -> ValidValue:
         return ValidValue(
-            name = attr(node, 'name'),
-            description = attr(node, 'description', None),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int),
-            value = node.text.strip()
+            name=attr(node, 'name'),
+            description=attr(node, 'description', None),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
+            value=node.text.strip()
         )
 
-    def getEnum(self, node: ET.Element, offset: Optional[int] = None) -> Enum:
-        nameStr = attr(node, 'name')
+    def parse_enum_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Enum:
+        name_str = attr(node, 'name')
+        valid_value_by_name = UniqueKeysDict()
 
-        validValueByName = UniqueKeysDict()
         for child in node:
             if child.tag == 'validValue':
-                validValue = self.getValidValue(child)
-                validValueByName[validValue.name] = validValue
+                valid_value = self.parse_valid_value_from_node(child)
+                valid_value_by_name[valid_value.name] = valid_value
             else:
-                raise Exception(f'unexpected tag "{child.tag}" inside enum "{nameStr}" ')
+                raise Exception(f'unexpected tag "{child.tag}" inside enum "{name_str}"')
 
         return Enum(
-            name = nameStr,
-            description = attr(node, 'description', None),
-            encodingType = self.getEncodingTypeForEnum(attr(node, 'encodingType')),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int),
-            offset = attr(node, 'offset', offset, cast=int),
-            nullValue = attr(node, 'nullValue', None),
-            validValueByName = validValueByName
+            name=name_str,
+            description=attr(node, 'description', None),
+            presence=attr(node, 'presence', Presence.REQUIRED, cast=Presence),
+            encoding_type=self.get_encoding_type_for_enum(attr(node, 'encodingType')),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
+            offset=attr(node, 'offset', offset, cast=int),
+            null_value=attr(node, 'nullValue', None),
+            valid_value_by_name=valid_value_by_name
         )
 
-    def getChoice(self, node: ET.Element) -> Choice:
+    def parse_choice_from_node(self, node: ET.Element) -> Choice:
         return Choice(
-            name = attr(node, 'name'),
-            description = attr(node, 'description', None),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int),
-            value = node.text.strip()
+            name=attr(node, 'name'),
+            description=attr(node, 'description', None),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
+            value=node.text.strip()
         )
 
-    def getSet(self, node: ET.Element, offset: Optional[int] = None) -> Set:
-        nameStr = attr(node, 'name')
+    def parse_set_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Set:
+        name_str = attr(node, 'name')
+        choice_by_name = UniqueKeysDict()
 
-        choiceByName = UniqueKeysDict()
         for child in node:
-            if child.tag == 'choice':
-                choice = self.getChoice(child)
-                choiceByName[choice.name] = choice
-            else:
-                raise Exception(f'unexpected tag "{child.tag}" inside set "{nameStr}" ')
+            if child.tag != 'choice':
+                raise Exception(f'unexpected tag "{child.tag}" inside set "{name_str}" ')
+            choice = self.parse_choice_from_node(child)
+            choice_by_name[choice.name] = choice
 
         return Set(
-            name=nameStr,
-            description = attr(node, 'description', None),
-            encodingType = self.getEncodingTypeForSet(attr(node, 'encodingType')),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int),
-            offset = attr(node, 'offset', offset, cast=int),
-            choiceByName = choiceByName
+            name=name_str,
+            description=attr(node, 'description', None),
+            presence=attr(node, 'presence', Presence.REQUIRED, cast=Presence),
+            encoding_type=self.get_encoding_type_for_set(attr(node, 'encodingType')),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
+            offset=attr(node, 'offset', offset, cast=int),
+            choice_by_name=choice_by_name
         )
 
-    def getRef(self, node: ET.Element, offset: Optional[int] = None) -> Ref:
+    def parse_ref_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Ref:
         return Ref(
-            name = attr(node, 'name'),
-            type = self.getEncodedTypeByName(attr(node, 'type')),
-            offset = attr(node, 'offset', offset, cast=int),
-            description = attr(node, 'description', None),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int),
+            name=attr(node, 'name'),
+            type=self.get_encoded_type_by_name(attr(node, 'type')),
+            offset=attr(node, 'offset', offset, cast=int),
+            description=attr(node, 'description', None),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
         )
 
-    def getMessage(self, node: ET.Element) -> Message:
-        nameStr = attr(node, 'name')
+    def parse_message_from_node(self, node: ET.Element) -> Message:
+        name_str = attr(node, 'name')
+        computed_offset = 0
+        group_encountered = False
+        data_encountered = False
+        field_by_name = UniqueKeysDict()
+        field_by_id = UniqueKeysDict()
 
-        computedOffset = 0
-        groupEncountered = False
-        dataEncountered = False
-
-        fieldByName = UniqueKeysDict()
-        fieldByID = UniqueKeysDict()
         for child in node:
             field = None
             if child.tag == 'field':
-                if groupEncountered or dataEncountered:
-                    raise Exception(f'field node specified after group or data node in message "{nameStr}"')
-                field = self.getField(child, offset=computedOffset)
-
-                if computedOffset > field.offset:
-                    raise Exception(f'invalid field offset "{field.name}" inside message "{nameStr}"')
-                computedOffset = field.offset + field.encodedLength()
-
+                if group_encountered or data_encountered:
+                    raise Exception(f'"field" specified after "group" or "data" node in message "{name_str}"')
+                field = self.parse_field_from_node(child, offset=computed_offset)
+                if computed_offset > field.offset:
+                    raise Exception(f'invalid field offset "{field.name}" inside message "{name_str}"')
+                computed_offset = field.offset + field.encoded_length()
             elif child.tag == 'group':
-                if dataEncountered:
-                    raise Exception(f'group node specified after data node in message "{nameStr}"')
-                field = self.getGroup(child)
-                groupEncountered = True
+                if data_encountered:
+                    raise Exception(f'"group" specified after "data" in message "{name_str}"')
+                field = self.parse_group_from_node(child)
+                group_encountered = True
             elif child.tag == 'data':
-                field = self.getData(child)
-                dataEncountered = True
+                field = self.parse_data_from_node(child)
+                data_encountered = True
             else:
-                raise Exception(f'unknown message "{nameStr}" child node "{child.tag}"')
+                raise Exception(f'unknown message "{name_str}" child node "{child.tag}"')
+            field_by_name[field.name] = field
+            field_by_id[field.id] = field
 
-            fieldByName[field.name] = field
-            fieldByID[field.id] = field
-
-        blockLength = attr(node, 'blockLength', computedOffset, cast=int)
-        if blockLength < computedOffset:
-            raise Exception(f'invalid blockLength value for message "{nameStr}"')
+        block_length = attr(node, 'blockLength', computed_offset, cast=int)
+        if block_length < computed_offset:
+            raise Exception(f'invalid blockLength value for message "{name_str}"')
 
         return Message(
-            name = nameStr,
-            id = attr(node, 'id', cast=int),
-            description = attr(node, 'description', None),
-            blockLength = blockLength,
-            semanticType = attr(node, 'semanticType', None),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int),
-            fields = fieldByName
+            name=name_str,
+            id=attr(node, 'id', cast=int),
+            description=attr(node, 'description', None),
+            block_length=block_length,
+            semantic_type=attr(node, 'semanticType', None),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
+            fields=field_by_name
         )
 
-    def getField(self, node: ET.Element, offset: int) -> Field:
-        nameStr = attr(node, 'name')
-        type = self.getEncodedTypeByName(attr(node, 'type'))
-        presence = attr(node, 'presence', type.presence if isinstance(type, Type) else Presence.REQUIRED, cast=Presence)
-        valueRef = attr(node, 'valueRef', None)
+    def parse_field_from_node(self, node: ET.Element, offset: int) -> Field:
+        name_str = attr(node, 'name')
+        encoded_type = self.get_encoded_type_by_name(attr(node, 'type'))
+        presence = attr(node, 'presence', encoded_type.presence if isinstance(encoded_type, Type) else Presence.REQUIRED, cast=Presence)
+        value_ref = attr(node, 'valueRef', None)
 
-        if valueRef != None and not self.isValidValueRef(valueRef):
-            raise Exception(f'valueRef "{valueRef}" of type "{nameStr}" is not valid')
-
+        if value_ref != None and not self.is_valid_value_ref(value_ref):
+            raise Exception(f'valueRef "{value_ref}" of type "{name_str}" is not valid')
         if presence == Presence.CONSTANT:
-            if isinstance(type, Enum):
-                if valueRef == None:
-                    raise Exception(f'valueRef not set for constant enum field "{nameStr}"')
-                if not self.isValidValueRef(valueRef):
-                    raise Exception(f'valueRef "{valueRef}" for type "{nameStr}" is not valid')
-            elif isinstance(type, Type):
-                if type.constValue == None:
-                    raise Exception(f'constValue not set of type for field "{nameStr}"')
+            if isinstance(encoded_type, Enum):
+                if value_ref == None:
+                    raise Exception(f'valueRef not set for constant enum field "{name_str}"')
+                if not self.is_valid_value_ref(value_ref):
+                    raise Exception(f'valueRef "{value_ref}" for type "{name_str}" is not valid')
+            elif isinstance(encoded_type, Type):
+                if encoded_type.const_value == None:
+                    raise Exception(f'"constValue" not set of type for field "{name_str}"')
             else:
-                raise Exception(f'field "{fieldNode}" is constant but encoding type is not enum or type')
-
-        if isinstance(type, Set):
+                raise Exception(f'field "{name_str}" is constant but encoding type is not "enum" or "type"')
+        if isinstance(encoded_type, Set):
             if presence != Presence.REQUIRED:
-                raise Exception(f'field "{nameStr}" of type "{type.name}" should be required')
-
-        if isinstance(type, Composite):
+                raise Exception(f'field "{name_str}" of type "{encoded_type.name}" should be required')
+        if isinstance(encoded_type, Composite):
             if presence == Presence.CONSTANT:
-                raise Exception(f'field "{nameStr}" of type "{type.name}" should not be constant')
+                raise Exception(f'field "{name_str}" of type "{encoded_type.name}" should not be constant')
 
         return Field(
-            name = nameStr,
-            id = attr(node, 'id', cast=int),
-            description = attr(node, 'description', None),
-            type = type,
-            offset = attr(node, 'offset', offset, cast=int),
-            presence = presence,
-            valueRef = valueRef,
-            semanticType = attr(node, 'semanticType', None),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int)
+            name=name_str,
+            id=attr(node, 'id', cast=int),
+            description=attr(node, 'description', None),
+            type=encoded_type,
+            offset=attr(node, 'offset', offset, cast=int),
+            presence=presence,
+            value_ref=value_ref,
+            semantic_type=attr(node, 'semanticType', None),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int)
         )
 
-    def getGroup(self, node: ET.Element) -> Group:
-        nameStr = attr(node, 'name')
+    def parse_group_from_node(self, node: ET.Element) -> Group:
+        name_str = attr(node, 'name')
+        computed_offset = 0
+        group_encountered = False
+        data_encountered = False
+        field_by_name = UniqueKeysDict()
+        field_by_id = UniqueKeysDict()
 
-        computedOffset = 0
-        groupEncountered = False
-        dataEncountered = False
-
-        fieldByName = UniqueKeysDict()
-        fieldByID = UniqueKeysDict()
         for child in node:
             field = None
             if child.tag == 'field':
-                if groupEncountered or dataEncountered:
-                    raise Exception(f'field node specified after group or data node in group "{nameStr}"')
-                field = self.getField(child, offset=computedOffset)
-
-                if computedOffset > field.offset:
-                    raise Exception(f'invalid field offset "{field.name}" inside group "{nameStr}"')
-                computedOffset = field.offset + field.encodedLength()
-
+                if group_encountered or data_encountered:
+                    raise Exception(f'<field> specified after <group> or <data> in group "{name_str}"')
+                field = self.parse_field_from_node(child, offset=computed_offset)
+                if computed_offset > field.offset:
+                    raise Exception(f'invalid field offset of "{field.name}" inside group "{name_str}"')
+                computed_offset = field.offset + field.encoded_length()
             elif child.tag == 'group':
-                if dataEncountered:
-                    raise Exception(f'group node specified after data node in group "{nameStr}"')
-                field = self.getGroup(child)
-                groupEncountered = True
+                if data_encountered:
+                    raise Exception(f'<group> specified after <data> in group "{name_str}"')
+                field = self.parse_group_from_node(child)
+                group_encountered = True
             elif child.tag == 'data':
-                field = self.getData(child)
-                dataEncountered = True
+                field = self.parse_data_from_node(child)
+                data_encountered = True
             else:
-                raise Exception(f'unknown group "{nameStr}" child node "{child.tag}"')
+                raise Exception(f'unknown child node "{child.tag}" in group "{name_str}"')
+            field_by_name[field.name] = field
+            field_by_id[field.id] = field
 
-            fieldByName[field.name] = field
-            fieldByID[field.id] = field
-
-        blockLength = attr(node, 'blockLength', computedOffset, cast=int)
-        if blockLength < computedOffset:
-            raise Exception(f'invalid blockLength value for group "{nameStr}"')
-
-        dimensionTypeStr = attr(node, 'dimensionType', 'groupSizeEncoding')
-        dimensionType = self.getEncodedTypeByName(dimensionTypeStr)
-        if not isinstance(dimensionType, Composite) or not dimensionType.isValidDimensionType():
-            raise Exception(f'type "{dimensionTypeStr}" is not valid dimension type')
+        block_length = attr(node, 'blockLength', computed_offset, cast=int)
+        if block_length < computed_offset:
+            raise Exception(f'invalid blockLength value for group "{name_str}"')
+        dimension_type_str = attr(node, 'dimensionType', 'groupSizeEncoding')
+        dimension_type = self.get_encoded_type_by_name(dimension_type_str)
+        if not isinstance(dimension_type, Composite) or not dimension_type.is_valid_dimension_type():
+            raise Exception(f'type "{dimension_type_str}" is not valid dimension type')
 
         return Group(
-            name = nameStr,
-            id = attr(node, 'id', cast=int),
-            description = attr(node, 'description', None),
-            dimensionType = dimensionType,
-            blockLength = blockLength,
-            fields = fieldByName
+            name=name_str,
+            id=attr(node, 'id', cast=int),
+            description=attr(node, 'description', None),
+            dimension_type=dimension_type,
+            block_length=block_length,
+            fields=field_by_name
         )
 
-    def getData(self, node: ET.Element) -> Data:
-        typeStr = attr(node, 'type')
-        type = self.getEncodedTypeByName(typeStr)
-        if not isinstance(type, Composite) or not type.isValidVariableLength():
-            raise Exception(f'type "{typeStr}" is not valid type for data')
+    def parse_data_from_node(self, node: ET.Element) -> Data:
+        type_str = attr(node, 'type')
+        encoded_type = self.get_encoded_type_by_name(type_str)
+        if not isinstance(encoded_type, Composite) or not encoded_type.is_valid_variable_length():
+            raise Exception(f'type "{type_str}" is not valid type for <data>')
 
         return Data(
-            name = attr(node, 'name'),
-            id = attr(node, 'id', cast=int),
-            description = attr(node, 'description', None),
-            type = type,
-            semanticType = attr(node, 'semanticType', None),
-            sinceVersion = attr(node, 'sinceVersion', 0, cast=int),
-            deprecated = attr(node, 'deprecated', None, cast=int)
+            name=attr(node, 'name'),
+            id=attr(node, 'id', cast=int),
+            description=attr(node, 'description', None),
+            type=encoded_type,
+            semantic_type=attr(node, 'semanticType', None),
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int)
         )
 
-    def getEncodingTypeForEnum(self, encodingTypeStr: str) -> PrimitiveType:
-        if encodingTypeStr in self.ValidPrimitiveTypeForEnum:
-            return self.getPrimitiveType(encodingTypeStr)
+    def get_encoding_type_for_enum(self, encoding_type_str: str) -> PrimitiveType:
+        if encoding_type_str in Parser.VALID_PRIMITIVE_TYPE_FOR_ENUM:
+            return Parser.get_primitive_type(encoding_type_str)
+        encoding_type_node = self.root.find(f'.//types/type[@name="{encoding_type_str}"]')
+        if encoding_type_node == None:
+            raise Exception(f'encodingType "{encoding_type_str}" for <enum> not found')
+        encoding_type = self.parse_type_from_node(encoding_type_node)
+        primitive_type = encoding_type.primitive_type
+        if primitive_type.name not in Parser.VALID_PRIMITIVE_TYPE_FOR_ENUM:
+            raise Exception(f'type "{encoding_type_str}" is not valid for <enum> encodingType')
+        return primitive_type
 
-        encodingTypeNode = self.root.find(f'.//types/type[@name="{encodingTypeStr}"]')
-        if encodingTypeNode == None:
-            raise Exception(f'encodingType "{encodingTypeStr}" for enum not found')
+    def get_encoding_type_for_set(self, encoding_type_str: str) -> PrimitiveType:
+        if encoding_type_str in Parser.VALID_PRIMITIVE_TYPE_FOR_SET:
+            return Parser.get_primitive_type(encoding_type_str)
+        encoding_type_node = self.root.find(f'.//types/type[@name="{encoding_type_str}"]')
+        if encoding_type_node == None:
+            raise Exception(f'encodingType "{encoding_type_str}" for <set> not found')
+        encoding_type = self.parse_type_from_node(encoding_type_node)
+        primitive_type = encoding_type.primitive_type
+        if primitive_type.name not in Parser.VALID_PRIMITIVE_TYPE_FOR_SET:
+            raise Exception(f'type "{encoding_type_str}" is not valid for <set> encodingType')
+        return primitive_type
 
-        encodingType = self.getType(encodingTypeNode)
-        primitiveType = encodingType.primitiveType
-        if primitiveType.name not in self.ValidPrimitiveTypeForEnum:
-            raise Exception(f'type "{encodingTypeStr}" is not suitable for enum encodingType')
-
-        return primitiveType
-
-    def getEncodingTypeForSet(self, encodingTypeStr: str) -> PrimitiveType:
-        if encodingTypeStr in self.ValidPrimitiveTypeForSet:
-            return self.getPrimitiveType(encodingTypeStr)
-
-        encodingTypeNode = self.root.find(f'.//types/type[@name="{encodingTypeStr}"]')
-        if encodingTypeNode == None:
-            raise Exception(f'encodingType "{encodingTypeStr}" for set not found')
-
-        encodingType = self.getType(encodingTypeNode)
-        primitiveType = encodingType.primitiveType
-        if primitiveType.name not in self.ValidPrimitiveTypeForSet:
-            raise Exception(f'type "{encodingTypeStr}" is not suitable for set encodingType')
-
-        return primitiveType
-
-    def getEncodedType(self, node: ET.Element) -> EncodedType:
+    def parse_encoded_type_from_node(self, node: ET.Element) -> EncodedType:
         if node.tag == 'type':
-            return self.getType(node)
+            return self.parse_type_from_node(node)
         elif node.tag == 'composite':
-            return self.getComposite(node)
+            return self.parse_composite_from_node(node)
         elif node.tag == 'enum':
-            return self.getEnum(node)
+            return self.parse_enum_from_node(node)
         elif node.tag == 'set':
-            return self.getSet(node)
+            return self.parse_set_from_node(node)
         else:
-            raise Exception(f'unknown node type definition (node: "{node.tag}")')
+            raise Exception(f'unknown node type definition (node: "{node.tag}", line: {node.sourceline})')
 
-    def getEncodedTypeByName(self, name: str) -> EncodedType:
-        ''' first check type exist in xml '''
-        typeNode = self.root.find(f'.//types/*[@name="{name}"]')
-        if typeNode != None:
-            return self.getEncodedType(typeNode)
+    def get_encoded_type_by_name(self, name: str) -> EncodedType:
+        # first check type exist in xml
+        node = self.root.find(f'.//types/*[@name="{name}"]')
+        if node != None:
+            return self.parse_encoded_type_from_node(node)
+        # check type is primitive type
+        if name in Parser.PRIMITIVE_TYPE_BY_NAME:
+            return Parser.get_primitive_type_as_encoded_type(Parser.PRIMITIVE_TYPE_BY_NAME[name])
+        raise Exception(f'encoded type "{name}" not found')
 
-        ''' now check type is primitive type '''
-        if name in Parser.PrimitiveTypeByName:
-            return self.getPrimitiveTypeAsEncodedType(Parser.PrimitiveTypeByName[name])
-
-        raise Exception(f'type "{name}" not found')
-
-    ''' Return True on valueRef is valid and False otherwise '''
-    def isValidValueRef(self, valueRef: str) -> bool:
-        enumName, enumValueName = valueRef.split('.')
-        enumType = self.getEncodedTypeByName(enumName)
-        if not isinstance(enumType, Enum):
+    def is_valid_value_ref(self, value_ref: str) -> bool:
+        enum_name, enum_value_name = value_ref.split('.')
+        enum_type = self.get_encoded_type_by_name(enum_name)
+        if not isinstance(enum_type, Enum):
             return False
-        if enumValueName not in enumType.validValueByName:
+        if enum_value_name not in enum_type.valid_value_by_name:
             return False
         return True

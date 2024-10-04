@@ -10,9 +10,9 @@
 
 {% macro define_group(entry) %}
 {%- set group_class_name = entry.name | format_class_name -%}
-{%- set dimensions_type_class_name = entry.dimensionType.name | format_class_name -%}
+{%- set dimensions_type_class_name = entry.dimension_type.name | format_class_name -%}
 {%- set method_name = entry.name -%}
-{%- set num_in_group_type = (entry.dimensionType.containedTypes | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+{%- set num_in_group_type = (entry.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
 
 class {{ group_class_name }} final {
 private:
@@ -45,7 +45,7 @@ public:
     {{ group_class_name }}(char* buffer, std::size_t count, std::size_t* pos, std::uint16_t actingVersion,
             std::size_t bufferLength)
     {
-        if (count > ({{ num_in_group_type.maxValue | replace_keyword }})) {
+        if (count > ({{ num_in_group_type.max_value | replace_keyword }})) {
             throw std::runtime_error("count outside of allowed range in group {{ entry.name }} [E110]");
         }
 
@@ -64,7 +64,7 @@ public:
     }
 
     [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
-        return {{ entry.blockLength }};
+        return {{ entry.block_length }};
     }
 
     [[nodiscard]] std::size_t sbePosition() const noexcept {

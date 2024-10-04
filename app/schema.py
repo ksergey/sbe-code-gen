@@ -20,114 +20,113 @@ class ByteOrder(enum.Enum):
 class PrimitiveType:
     name: str = field(default_factory=str)
     size: int = field(default_factory=int)
-    nullValue: str = field(default_factory=str)
-    minValue: str = field(default_factory=str)
-    maxValue: str = field(default_factory=str)
+    null_value: str = field(default_factory=str)
+    min_value: str = field(default_factory=str)
+    max_value: str = field(default_factory=str)
 
 @dataclass(frozen=True)
 class Type:
     name: str = field(default_factory=str)
     description: Optional[str] = field(default=None)
     presence: Presence = field(default=Presence.REQUIRED)
-    nullValue: Optional[str] = field(default=None)
-    minValue: Optional[str] = field(default=None)
-    maxValue: Optional[str] = field(default=None)
+    null_value: Optional[str] = field(default=None)
+    min_value: Optional[str] = field(default=None)
+    max_value: Optional[str] = field(default=None)
     length: int = field(default=1)
     offset: Optional[int] = field(default=None)
-    primitiveType: str = field(default_factory=str)
-    semanticType: Optional[str] = field(default=None)
-    sinceVersion: int = field(default=0)
+    primitive_type: str = field(default_factory=str)
+    semantic_type: Optional[str] = field(default=None)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
-    valueRef: Optional[str] = field(default=None)
-    constValue: Optional[str] = field(default=None)
-    characterEncoding: Optional[str] = field(default=None)
+    value_ref: Optional[str] = field(default=None)
+    const_value: Optional[str] = field(default=None)
+    character_encoding: Optional[str] = field(default=None)
 
-    def encodedLength(self) -> int:
+    def encoded_length(self) -> int:
         if self.presence == Presence.CONSTANT:
             return 0
         else:
-            return self.length * self.primitiveType.size
+            return self.length * self.primitive_type.size
 
 @dataclass(frozen=True)
 class Composite:
     name: str = field(default_factory=str)
     offset: Optional[int] = field(default=None)
     description: Optional[str] = field(default=None)
-    semanticType: Optional[str] = field(default=None)
-    sinceVersion: int = field(default=0)
+    semantic_type: Optional[str] = field(default=None)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
-    containedTypes: Dict[str, Union[Type, Composite, Enum, Set, Ref]] = field(default_factory=dict)
+    contained_types: Dict[str, Union[Type, Composite, Enum, Set, Ref]] = field(default_factory=dict)
 
-    def encodedLength(self) -> int:
+    def encoded_length(self) -> int:
         length = 0
-        for type in self.containedTypes.values():
-            assert (type.offset != None), "offset inside composite type must be present"
-            if type.offset != None:
-                length = type.offset
-            length += type.encodedLength()
+        for contained_type in self.contained_types.values():
+            assert (contained_type.offset != None), "offset inside composite type must be present"
+            if contained_type.offset != None:
+                length = contained_type.offset
+            length += contained_type.encoded_length()
         return length
 
     ''' Find contained type by name. Return EncodedType on success and None otherwise '''
-    def findType(self, name: str) -> Optional[EncodedType]:
-        return self.containedTypes[name] if name in self.containedTypes else None
+    def find_type(self, name: str) -> Optional[EncodedType]:
+        return self.contained_types[name] if name in self.contained_types else None
 
     ''' Return True on composite is valid dimension type '''
-    def isValidDimensionType(self) -> bool:
-        if not self.findType('blockLength'):
+    def is_valid_dimension_type(self) -> bool:
+        if not self.find_type('blockLength'):
             return False
-        if not self.findType('numInGroup'):
+        if not self.find_type('numInGroup'):
             return False
         return True
 
     ''' Return True on composite is valid header type '''
-    def isValidHeaderType(self) -> bool:
-        if not self.findType('blockLength'):
+    def is_valid_header_type(self) -> bool:
+        if not self.find_type('blockLength'):
             return False
-        if not self.findType('templateId'):
+        if not self.find_type('templateId'):
             return False
-        if not self.findType('schemaId'):
+        if not self.find_type('schemaId'):
             return False
-        if not self.findType('version'):
+        if not self.find_type('version'):
             return False
         return True
 
     ''' Return True on composite is valid variable length type '''
-    def isValidVariableLength(self) -> bool:
-        lengthType = self.findType('length')
-        if lengthType == None:
+    def is_valid_variable_length(self) -> bool:
+        length_type = self.find_type('length')
+        if length_type == None:
             return False
-        if lengthType.primitiveType.name not in ('uint8', 'uint16', 'uint32', 'uint64'):
+        if length_type.primitive_type.name not in ('uint8', 'uint16', 'uint32', 'uint64'):
             return False
-
-        varDataType = self.findType('varData')
-        if varDataType == None:
+        var_data_type = self.find_type('varData')
+        if var_data_type == None:
             return False
-        if varDataType.length != 0:
+        if var_data_type.length != 0:
             return False
-        if varDataType.primitiveType.name not in ('char', 'uint8'):
+        if var_data_type.primitive_type.name not in ('char', 'uint8'):
             return False
-
         return True
 
 @dataclass(frozen=True)
 class Enum:
     name: str = field(default_factory=str)
     description: Optional[str] = field(default=None)
-    encodingType: PrimitiveType = field(default_factory=PrimitiveType)
-    sinceVersion: int = field(default=0)
+    presence: Presence = field(default=Presence.REQUIRED)
+    encoding_type: PrimitiveType = field(default_factory=PrimitiveType)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
     offset: Optional[int] = field(default=None)
-    nullValue: Optional[str] = field(default=None)
-    validValueByName: Dict[str, ValidValue] = field(default_factory=dict)
+    null_value: Optional[str] = field(default=None)
+    valid_value_by_name: Dict[str, ValidValue] = field(default_factory=dict)
 
-    def encodedLength(self) -> int:
-        return self.encodingType.size
+    def encoded_length(self) -> int:
+        return self.encoding_type.size
 
 @dataclass(frozen=True)
 class ValidValue:
     name: str = field(default_factory=str)
     description: Optional[str] = field(default=None)
-    sinceVersion: int = field(default=0)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
     value: str = field(default_factory=str)
 
@@ -135,20 +134,21 @@ class ValidValue:
 class Set:
     name: str = field(default_factory=str)
     description: Optional[str] = field(default=None)
-    encodingType: PrimitiveType = field(default_factory=PrimitiveType)
-    sinceVersion: int = field(default=0)
+    presence: Presence = field(default=Presence.REQUIRED)
+    encoding_type: PrimitiveType = field(default_factory=PrimitiveType)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
     offset: Optional[int] = field(default=None)
-    choiceByName: Dict[str, Choice] = field(default_factory=dict)
+    choice_by_name: Dict[str, Choice] = field(default_factory=dict)
 
-    def encodedLength(self) -> int:
-        return self.encodingType.size
+    def encoded_length(self) -> int:
+        return self.encoding_type.size
 
 @dataclass(frozen=True)
 class Choice:
     name: str = field(default_factory=str)
     description: Optional[str] = field(default=None)
-    sinceVersion: int = field(default=0)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
     value: str = field(default_factory=str)
 
@@ -158,20 +158,20 @@ class Ref:
     type: EncodedType = field(default=None)
     offset: Optional[int] = field(default=None)
     description: Optional[str] = field(default=None)
-    sinceVersion: int = field(default=0)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
 
-    def encodedLength(self) -> int:
-        return self.type.encodedLength()
+    def encoded_length(self) -> int:
+        return self.type.encoded_length()
 
 @dataclass(frozen=True)
 class Message:
     name: str = field(default_factory=str)
     id: int = field(default_factory=int)
     description: Optional[str] = field(default=None)
-    blockLength: Optional[int] = field(default=None)
-    semanticType: Optional[str] = field(default=None)
-    sinceVersion: int = field(default=0)
+    block_length: Optional[int] = field(default=None)
+    semantic_type: Optional[str] = field(default=None)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
     fields: Dict[str, EncodedType] = field(default_factory=dict)
 
@@ -183,23 +183,23 @@ class Field:
     type: EncodedType = field(default=None)
     offset: Optional[int] = field(default=None)
     presence: Presence = field(default=Presence.REQUIRED)
-    valueRef: Optional[str] = field(default=None)
-    semanticType: Optional[str] = field(default=None)
-    sinceVersion: int = field(default=0)
+    value_ref: Optional[str] = field(default=None)
+    semantic_type: Optional[str] = field(default=None)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
 
-    def encodedLength(self) -> int:
+    def encoded_length(self) -> int:
         if self.presence == Presence.CONSTANT:
             return 0
-        return self.type.encodedLength()
+        return self.type.encoded_length()
 
 @dataclass(frozen=True)
 class Group:
     name: str = field(default_factory=str)
     id: int = field(default_factory=int)
     description: Optional[str] = field(default=None)
-    dimensionType: Composite = field(default_factory=Composite)
-    blockLength: Optional[int] = field(default=None)
+    dimension_type: Composite = field(default_factory=Composite)
+    block_length: Optional[int] = field(default=None)
     fields: Dict[str, Union[Field, Group, Data]] = field(default_factory=dict)
 
 @dataclass(frozen=True)
@@ -208,8 +208,8 @@ class Data:
     id: int = field(default_factory=int)
     description: Optional[str] = field(default=None)
     type: Composite = field(default_factory=Composite)
-    semanticType: Optional[str] = field(default=None)
-    sinceVersion: int = field(default=0)
+    semantic_type: Optional[str] = field(default=None)
+    since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
 
 @dataclass(frozen=True)
@@ -217,10 +217,10 @@ class Schema:
     package: Optional[str] = field(default=None)
     id: int = field(default_factory=int)
     version: int = field(default=0)
-    semanticType: Optional[str] = field(default=None)
-    byteOrder: ByteOrder = field(default=ByteOrder.LITTLE_ENDIAN)
+    semantic_type: Optional[str] = field(default=None)
+    byte_order: ByteOrder = field(default=ByteOrder.LITTLE_ENDIAN)
     description: Optional[str] = field(default=None)
-    headerType: Composite = field(default_factory=Composite)
+    header_type: Composite = field(default_factory=Composite)
     types: Dict[str, EncodedType] = field(default_factory=dict)
     messages: Dict[str, Message] = field(default_factory=dict)
 
