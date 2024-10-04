@@ -17,17 +17,17 @@ class UniqueKeysDict(UserDict):
 class Parser:
     ''' Primitive types '''
     PRIMITIVE_TYPE_BY_NAME = UniqueKeysDict({
-        'char':     PrimitiveType('char',   1,  "CHAR_NULL",    "CHAR_MIN",     "CHAR_MAX"),
-        'int8':     PrimitiveType('int8',   1,  "INT8_NULL",    "INT8_MIN",     "INT8_MAX"),
-        'int16':    PrimitiveType('int16',  2,  "INT16_NULL",   "INT16_MIN",    "INT16_MAX"),
-        'int32':    PrimitiveType('int32',  4,  "INT32_NULL",   "INT32_MIN",    "INT32_MAX"),
-        'int64':    PrimitiveType('int64',  8,  "INT64_NULL",   "INT64_MIN",    "INT64_MAX"),
-        'uint8':    PrimitiveType('uint8',  1,  "UINT8_NULL",   "UINT8_MIN",    "UINT8_MAX"),
-        'uint16':   PrimitiveType('uint16', 2,  "UINT16_NULL",  "UINT16_MIN",   "UINT16_MAX"),
-        'uint32':   PrimitiveType('uint32', 4,  "UINT32_NULL",  "UINT32_MIN",   "UINT32_MAX"),
-        'uint64':   PrimitiveType('uint64', 8,  "UINT64_NULL",  "UINT64_MIN",   "UINT64_MAX"),
-        'float':    PrimitiveType('float',  4,  "FLOAT_NULL",   "FLOAT_MIN",    "FLOAT_MAX"),
-        'double':   PrimitiveType('double', 8,  "DOUBLE_NULL",  "DOUBLE_MIN",   "DOUBLE_MAX")
+        'char':     PrimitiveType('char',   1,  'CHAR_NULL',    'CHAR_MIN',     'CHAR_MAX'),
+        'int8':     PrimitiveType('int8',   1,  'INT8_NULL',    'INT8_MIN',     'INT8_MAX'),
+        'int16':    PrimitiveType('int16',  2,  'INT16_NULL',   'INT16_MIN',    'INT16_MAX'),
+        'int32':    PrimitiveType('int32',  4,  'INT32_NULL',   'INT32_MIN',    'INT32_MAX'),
+        'int64':    PrimitiveType('int64',  8,  'INT64_NULL',   'INT64_MIN',    'INT64_MAX'),
+        'uint8':    PrimitiveType('uint8',  1,  'UINT8_NULL',   'UINT8_MIN',    'UINT8_MAX'),
+        'uint16':   PrimitiveType('uint16', 2,  'UINT16_NULL',  'UINT16_MIN',   'UINT16_MAX'),
+        'uint32':   PrimitiveType('uint32', 4,  'UINT32_NULL',  'UINT32_MIN',   'UINT32_MAX'),
+        'uint64':   PrimitiveType('uint64', 8,  'UINT64_NULL',  'UINT64_MIN',   'UINT64_MAX'),
+        'float':    PrimitiveType('float',  4,  'FLOAT_NULL',   'FLOAT_MIN',    'FLOAT_MAX'),
+        'double':   PrimitiveType('double', 8,  'DOUBLE_NULL',  'DOUBLE_MIN',   'DOUBLE_MAX')
     })
 
     ''' Primitive type names suitable for encodingType of enum '''
