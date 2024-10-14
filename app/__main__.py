@@ -2,6 +2,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license
 
 import importlib
+import traceback
 import sys
 from argparse import ArgumentParser, SUPPRESS
 from app.parser import Parser
@@ -21,6 +22,7 @@ def main() -> None:
         generator = Generator(args.destination)
         generator.generate(schema)
     except Exception as e:
+        sys.exit(traceback.format_exc())
         sys.exit(f'error: {e}')
 
 if __name__ == '__main__':

@@ -114,6 +114,7 @@ g++ main.cpp -o main -std=c++2a
 
 # TODO
 
+- [ ] nested composite enum/set/composite types
 - [ ] tests
 - [ ] ci integration
 - [ ] cmake integration

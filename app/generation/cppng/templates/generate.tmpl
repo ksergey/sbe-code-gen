@@ -1,0 +1,664 @@
+{% macro wrap_const_value_impl(value, type) %}
+{% if type.token in ('enum', 'set') %}
+    {% if type.encoding_type == 'char' %}
+'{{ value }}'
+    {% else %}
+{{ value | replace_keyword }}
+    {% endif %}
+{% elif type.token == 'type' %}
+    {% if type.primitive_type == 'char' %}
+        {% if type.length > 1 %}
+"{{ value }}"
+        {% else %}
+'{{ value }}'
+        {% endif %}
+    {% else %}
+{{ value | replace_keyword }}
+    {% endif %}
+{% else %}
+SOMETHING_GOES_WRONG
+{% endif %}
+{% endmacro %}
+
+{%- macro wrap_const_value(value, type) -%}
+{{ wrap_const_value_impl(value, type).strip() }}
+{%- endmacro -%}
+
+{% macro field_encoding_type(type) %}
+{% if type.token in ('type', 'set', 'enum') %}
+sbe_code_gen::Encoding<{{ type.name | format_class_name }}>
+{% else %}
+{{ type.name | format_class_name }}
+{% endif %}
+{% endmacro %}
+
+{% macro field_encoding_impl(field) %}
+{% set type = field.type if field.token == 'field' else field %}
+
+{% if field.presence == 'constant' %}
+    {% set presence_class = 'MP_Value<Presence::Constant>' %}
+{% elif field.presence == 'required' %}
+    {% set presence_class = 'MP_Value<Presence::Required>' %}
+{% elif field.presence == 'optional' %}
+    {% set presence_class = 'MP_Value<Presence::Optional>' %}
+{% else %}
+    {% set presence_class = 'MP_None' %}
+{% endif %}
+
+{% if field.presence == 'constant' %}
+    {% if type.token == 'enum' %}
+        {% set const_value_class = 'MP_Value<' ~ type.name | format_class_name ~ '::' ~ field.value_ref.split('.')[1] ~'>' %}
+    {% elif type.token == 'type' %}
+        {% if type.primitive_type == 'char' and type.length > 1 %}
+            {% set const_value_class = 'MP_Str<' ~  wrap_const_value(type.const_value, type) ~ '>' %}
+        {% else %}
+            {% set const_value_class = 'MP_Value<' ~ type.primitive_type | replace_keyword ~ '(' ~ wrap_const_value(type.const_value, type) ~ ')>' %}
+        {% endif %}
+    {% else %}
+        {% set const_value_class = 'struct MP_ConstValue_Unknown' %}
+    {% endif %}
+{% else %}
+    {% set const_value_class = 'MP_None' %}
+{% endif %}
+
+{% if field.token in ('type', 'set', 'enum', 'field') %}
+  {% set offset_value_class = 'MP_SizeT<' ~ field.offset ~ '>' %}
+{% else %}
+  {% set offset_value_class = 'MP_None' %}
+{% endif %}
+sbe_code_gen::FieldEncoding<{{ field_encoding_type(type).strip() }}, {{ presence_class }}, {{ offset_value_class }}, {{ const_value_class }}>
+{% endmacro %}
+
+{%- macro field_encoding(field) -%}
+{{ field_encoding_impl(field).strip() }}
+{%- endmacro -%}
+
+{% macro plain_type_definition(type) -%}
+{% set enc_type = type.primitive_type | replace_keyword -%}
+
+// type: {{ type.name }}
+{% if type.description %}
+// description: {{ type.description }}
+{% endif %}
+using {{ type.name | format_class_name }} = sbe_code_gen::PlainType<{{ enc_type}}, MP_SizeT<{{ type.length }}>, MP_Value<{{ enc_type }}({{ type.min_value | replace_keyword }})>, MP_Value<{{ enc_type }}({{ type.max_value | replace_keyword }})>, MP_Value<{{ enc_type }}({{ type.null_value | replace_keyword }})>, MP_Str<"{{ type.character_encoding or "" }}">>;
+{%- endmacro %}
+
+{% macro enum_definition(type, schema) -%}
+{% set enum_class_name = type.name | format_class_name -%}
+{% set underlying_type = type.encoding_type | replace_keyword -%}
+
+// enum: {{ type.name }}
+{% if type.description %}
+// description: {{ type.description }}
+{% endif %}
+class {{ enum_class_name }} : public sbe_code_gen::SBEType_Enum {
+private:
+  {{underlying_type}} value_;
+
+public:
+  using primitive_type = {{ underlying_type }};
+
+  using ValidValues = MP_List<
+{% for valid_value in type.valid_values %}
+    MP_Pair<MP_Str<"{{ valid_value.name }}">, MP_Value<{{ underlying_type }}({{ wrap_const_value(valid_value.value, type) }})>>{% if not loop.last %},{% endif +%}
+{% endfor %}
+  >;
+
+  enum enumerated : {{ underlying_type }} {
+{% for valid_value in type.valid_values %}
+    {{ valid_value.name }} = {{ wrap_const_value(valid_value.value, type) }},
+{% endfor %}
+    NULL_VALUE = {{ type.null_value | replace_keyword }}
+  };
+
+  constexpr {{ enum_class_name }}() noexcept : {{ enum_class_name }}(enumerated::NULL_VALUE) {}
+
+  constexpr {{ enum_class_name }}(enumerated value) noexcept : value_(value) {}
+
+  explicit constexpr {{ enum_class_name }}({{ underlying_type }} value) noexcept : value_(value) {}
+
+  [[nodiscard]] constexpr enumerated value() const noexcept {
+    return enumerated(value_);
+  }
+
+  constexpr void setValue(enumerated value) noexcept {
+    value_ = value;
+  }
+
+  [[nodiscard]] static constexpr char const* toCString({{enum_class_name}} value) noexcept {
+    switch (value.value()) {
+{% for valid_value in type.valid_values %}
+    case enumerated::{{ valid_value.name }}:
+      return "{{ valid_value.name }}";
+{% endfor %}
+    default:
+      break;
+    }
+    return "";
+  }
+
+  [[nodiscard]] static constexpr std::string_view toStringView({{ enum_class_name }} value) noexcept {
+    using namespace std::string_view_literals;
+    switch (value.value()) {
+{% for valid_value in type.valid_values %}
+    case enumerated::{{ valid_value.name }}:
+      return "{{ valid_value.name }}"sv;
+{% endfor %}
+    default:
+      break;
+    }
+    return ""sv;
+  }
+
+private:
+  [[nodiscard]] friend constexpr auto operator<=>({{ enum_class_name }} const& a, {{ enum_class_name }} const& b) noexcept {
+    return a.value_ <=> b.value_;
+  };
+};
+{%- endmacro %}
+
+
+{% macro set_definition(type, schema) -%}
+{% set set_class_name = type.name | format_class_name -%}
+{% set underlying_type = type.encoding_type | replace_keyword -%}
+
+// set: {{ type.name }}
+{% if type.description %}
+// description: {{ type.description }}
+{% endif %}
+class {{ set_class_name }} : public sbe_code_gen::SBEType_Set {
+private:
+  {{underlying_type}} value_ = 0;
+
+public:
+  using primitive_type = {{ underlying_type }};
+
+  using Choices = MP_List<
+{% for choice in type.choices %}
+    MP_Pair<MP_Str<"{{ choice.name }}">, MP_Value<{{ underlying_type }}(1 << {{ choice.value }})>>{% if not loop.last %},{% endif +%}
+{% endfor %}
+  >;
+
+{% for choice in type.choices %}
+  static constexpr auto {{ choice.name }} = {{ underlying_type }}(1 << {{ choice.value }});
+{% endfor %}
+
+  constexpr {{ set_class_name }}() = default;
+
+  constexpr {{ set_class_name }}({{ underlying_type }} value) noexcept : value_(value) {}
+
+  [[nodiscard]] constexpr {{ underlying_type }} rawValue() const noexcept {
+    return value_;
+  }
+
+  constexpr void setRawValue({{ underlying_type }} value) noexcept {
+    value_ = value;
+  }
+
+  [[nodiscard]] constexpr bool operator[]({{ underlying_type }} choiceBit) const noexcept {
+    return (choiceBit == (choiceBit & this->rawValue()));
+  }
+
+  [[nodiscard]] constexpr bool test({{ underlying_type }} choiceBit) const noexcept {
+    return (choiceBit == (choiceBit & this->rawValue()));
+  }
+
+  constexpr {{ set_class_name }}& set({{ underlying_type }} choiceBit, bool value = true) noexcept {
+    this->setRawValue(value ? (this->rawValue() | choiceBit) : (this->rawValue() & ~choiceBit));
+    return *this;
+  }
+
+  constexpr {{ set_class_name }}& reset() noexcept {
+    this->setRawValue(0);
+    return *this;
+  }
+
+  constexpr {{ set_class_name }}& reset({{ underlying_type }} choiceBit) noexcept {
+    return this->set(choiceBit, false);
+  }
+};
+{%- endmacro %}
+
+{% macro composite_definition(type, schema) -%}
+{% set composite_class_name = type.name | format_class_name -%}
+
+// composite: {{ type.name }}
+{% if type.description %}
+// description: {{ type.description }}
+{% endif %}
+class {{ composite_class_name }} : public sbe_code_gen::SBEType_Composite {
+private:
+  std::byte* buffer_ = nullptr;
+  std::size_t bufferLength_ = 0;
+  std::size_t offset_ = 0;
+  std::uint16_t actingVersion_ = 0;
+
+public:
+{# XXX: define plain types #}
+{% for contained_type in type.contained_types %}
+  {{ plain_type_definition(contained_type) | indent(2) }}
+
+{% endfor %}
+  using Fields = MP_List<
+{% for contained_type in type.contained_types %}
+    MP_Pair<MP_Str<"{{ contained_type.reference_name }}">, {{ field_encoding(contained_type) }}>{% if not loop.last %},{% endif +%}
+{% endfor %}
+  >;
+
+  constexpr {{ composite_class_name }}() = default;
+
+  constexpr {{ composite_class_name }}(std::byte* buffer, std::size_t offset, std::size_t bufferLength, std::uint16_t actingVersion)
+      : buffer_(buffer), bufferLength_(bufferLength), offset_(offset), actingVersion_(actingVersion) {
+    if ((offset_ + encodedLength()) > bufferLength_) [[unlikely]] {
+      throw std::runtime_error("buffer too short for flyweight {{ type.name }} [E107]");
+    }
+  }
+
+  constexpr {{ composite_class_name }}(std::byte* buffer, std::size_t bufferLength, std::uint16_t actingVersion)
+      : {{ composite_class_name }}(buffer, 0, bufferLength, actingVersion) {}
+
+  constexpr {{ composite_class_name }}(std::byte* buffer, std::size_t bufferLength)
+      : {{ composite_class_name }}(buffer, 0, bufferLength, sbeSchemaVersion()) {}
+
+  [[nodiscard]] static constexpr std::size_t encodedLength() noexcept {
+    return {{ type.encoded_length }};
+  }
+
+  [[nodiscard]] std::size_t offset() const noexcept {
+    return offset_;
+  }
+
+  [[nodiscard]] std::byte const* buffer() const noexcept {
+    return buffer_;
+  }
+
+  [[nodiscard]] std::byte* buffer() noexcept {
+    return buffer_;
+  }
+
+  [[nodiscard]] std::size_t bufferLength() const noexcept {
+    return bufferLength_;
+  }
+
+  [[nodiscard]] std::uint16_t actingVersion() const noexcept {
+    return actingVersion_;
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
+    return {{ schema.id }};
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
+    return {{ schema.version }};
+  }
+
+  template <std::size_t N>
+  [[nodiscard]] constexpr auto field() noexcept -> FieldByIndex<Fields, N> {
+    using F = FieldByIndex<Fields, N>;
+    return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
+  }
+
+  template <CtString Name>
+  [[nodiscard]] constexpr auto field() noexcept -> FieldByName<Fields, Name> {
+    using F = FieldByName<Fields, Name>;
+    return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
+  }
+};
+{%- endmacro %}
+
+{% macro data_definition(data, schema) -%}
+// data: {{ data.name }}
+{% if data.description %}
+// description: {{data.description }}
+{% endif %}
+using {{ data.name | format_class_name }} = sbe_code_gen::Data<{{ data.type.name | format_class_name }}>;
+{%- endmacro %}
+
+{% macro group_definition(group, schema) -%}
+{% set group_class_name = group.name | format_class_name -%}
+{% set dimensions_type_class_name = group.dimension_type.name | format_class_name -%}
+{% set num_in_group_type = (group.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+
+// group: {{ group.name }}
+{% if group.description %}
+// description: {{ group.description }}
+{% endif %}
+class {{ group_class_name }} : public sbe_code_gen::SBEType_Group {
+private:
+  std::byte* buffer_ = nullptr;
+  std::size_t bufferLength_ = 0;
+  std::size_t initialPosition_ = 0;
+  std::size_t* positionPtr_ = nullptr;
+  std::size_t actingBlockLength_ = 0;
+  std::uint16_t actingVersion_ = 0;
+  std::size_t count_ = 0;
+  std::size_t index_ = 0;
+  std::size_t offset_ = 0;
+
+public:
+{# XXX: select field->type with field.type.token == 'type' #}
+{% for type in group.fields | selectattr('type') | map(attribute='type') | unique(attribute='name') if type.token == 'type' %}
+  {{ plain_type_definition(type) | indent(2) }}
+
+{% endfor %}
+{# XXX: select <group> fields #}
+{% for field in group.fields if field.token == 'group' %}
+  {{ group_definition(field, schema) | indent(2) }}
+
+{% endfor %}
+{# XXX: select <data> fields #}
+{% for field in group.fields if field.token == 'data' %}
+  {{ data_definition(field, schema) | indent(2) }}
+
+{% endfor %}
+  using Fields = MP_List<
+{% for field in group.fields %}
+     MP_Pair<MP_Str<"{{ field.name }}">, {{ field_encoding(field) }}>{% if not loop.last %},{% endif +%}
+{% endfor %}
+  >;
+
+  constexpr {{ group_class_name }}() = default;
+
+  constexpr {{ group_class_name }}(std::byte* buffer, std::size_t* pos, std::size_t bufferLength, std::uint16_t actingVersion) {
+    {{ dimensions_type_class_name }} dimensions(buffer, *pos, bufferLength, actingVersion);
+    buffer_ = buffer;
+    bufferLength_ = bufferLength;
+    actingBlockLength_ = dimensions.template field<"blockLength">().value();
+    count_ = dimensions.template field<"numInGroup">().value();
+    index_ = 0;
+    actingVersion_ = actingVersion;
+    initialPosition_ = *pos;
+    positionPtr_ = pos;
+    *positionPtr_ = *positionPtr_ + {{ dimensions_type_class_name }}::encodedLength();
+  }
+
+  constexpr {{group_class_name}}& reset(std::size_t count) {
+    if (count > ({{ num_in_group_type.max_value | replace_keyword }})) {
+      throw std::runtime_error("count outside of allowed range in group {{ group.name }} [E110]");
+    }
+
+    count_ = count;
+    actingBlockLength_ = sbeBlockLength();
+    index_ = 0;
+
+    {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
+    dimensions.template field<"blockLength">().setValue(sbeBlockLength());
+    dimensions.template field<"numInGroup">().setValue(count_);
+
+    *positionPtr_ = initialPosition_ + {{ dimensions_type_class_name }}::encodedLength();
+
+    return *this;
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
+    return {{ group.block_length }};
+  }
+
+  [[nodiscard]] constexpr std::byte const* buffer() const noexcept {
+    return buffer_;
+  }
+
+  [[nodiscard]] constexpr std::byte* buffer() noexcept {
+    return buffer_;
+  }
+
+  [[nodiscard]] constexpr std::size_t bufferLength() const noexcept {
+    return bufferLength_;
+  }
+
+  [[nodiscard]] constexpr std::size_t offset() const noexcept {
+    return offset_;
+  }
+
+  [[nodiscard]] constexpr std::size_t sbePosition() const noexcept {
+    return *positionPtr_;
+  }
+
+  constexpr std::size_t sbeCheckPosition(std::size_t position) {
+    if (position > bufferLength_) [[unlikely]] {
+      throw std::runtime_error("buffer too short [E100]");
+    }
+    return position;
+  }
+
+  constexpr void sbePosition(std::size_t position) {
+    *positionPtr_ = sbeCheckPosition(position);
+  }
+
+  [[nodiscard]] constexpr std::size_t actingBlockLength() const noexcept {
+    return actingBlockLength_;
+  }
+
+  [[nodiscard]] constexpr std::uint16_t actingVersion() const noexcept {
+    return actingVersion_;
+  }
+
+  [[nodiscard]] constexpr std::size_t count() const noexcept {
+    return count_;
+  }
+
+  [[nodiscard]] constexpr bool hasNext() const noexcept {
+    return index_ < count_;
+  }
+
+  constexpr {{ group_class_name }}& next() {
+    if (index_ >= count_) {
+      throw std::runtime_error("index >= count [E108]");
+    }
+    offset_ = *positionPtr_;
+    if ((offset_ + actingBlockLength_) > bufferLength_) [[unlikely]] {
+      throw std::runtime_error("buffer too short for next group index [E108]");
+    }
+    *positionPtr_ = offset_ + actingBlockLength_;
+    ++index_;
+
+    return *this;
+  }
+
+  constexpr std::size_t resetCountToIndex() {
+    count_ = index_;
+    {{ dimensions_type_class_name }} dimensions(buffer_, initialPosition_, bufferLength_, actingVersion_);
+    dimensions.template field<"numInGroup">().setValue(count_);
+    return count_;
+  }
+
+  template <std::size_t N>
+  [[nodiscard]] constexpr auto field() noexcept -> FieldByIndex<Fields, N> {
+    using F = FieldByIndex<Fields, N>;
+
+    if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Group>) {
+      return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
+    } else if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Data>) {
+      return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
+    } else {
+      return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
+    }
+  }
+
+  template <CtString Name>
+  [[nodiscard]] constexpr auto field() noexcept -> FieldByName<Fields, Name> {
+    using F = FieldByName<Fields, Name>;
+
+    if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Group>) {
+      return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
+    } else if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Data>) {
+      return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
+    } else {
+      return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
+    }
+  }
+
+private:
+  [[nodiscard]] constexpr std::size_t* sbePositionPtr() noexcept {
+    return positionPtr_;
+  }
+};
+{%- endmacro %}
+
+{% macro message_definition(message, schema) -%}
+{% set message_class_name = message.name | format_class_name -%}
+{% set header_class_name = schema.header_type.name | format_class_name -%}
+
+// message: {{ message.name }}
+{% if message.description %}
+// description: {{ message.description }}
+{% endif %}
+class {{ message_class_name }} : public sbe_code_gen::SBEType_Message {
+private:
+  std::byte* buffer_ = nullptr;
+  std::size_t bufferLength_ = 0;
+  std::size_t offset_ = 0;
+  std::size_t position_ = 0;
+  std::size_t actingBlockLength_ = 0;
+  std::uint16_t actingVersion_ = 0;
+
+public:
+{# XXX: select field->type with field.type.token == 'type' #}
+{% for type in message.fields | selectattr('type') | map(attribute='type') | unique(attribute='name') if type.token == 'type' %}
+  {{ plain_type_definition(type) | indent(2) }}
+
+{% endfor %}
+{# XXX: select <group> fields #}
+{% for field in message.fields if field.token == 'group' %}
+  {{ group_definition(field, schema) | indent(2) }}
+
+{% endfor %}
+{# XXX: select <data> fields #}
+{% for field in message.fields if field.token == 'data' %}
+  {{ data_definition(field, schema) | indent(2) }}
+
+{% endfor %}
+  using Fields = MP_List<
+{% for field in message.fields %}
+     MP_Pair<MP_Str<"{{ field.name }}">, {{ field_encoding(field) }}>{% if not loop.last %},{% endif +%}
+{% endfor %}
+  >;
+
+  constexpr {{ message_class_name }}() = default;
+
+  constexpr {{ message_class_name }}(std::byte* buffer, std::size_t offset, std::size_t bufferLength,
+      std::size_t actingBlockLength, std::uint16_t actingVersion)
+      : buffer_(buffer), bufferLength_(bufferLength), offset_(offset),
+        position_(sbeCheckPosition(offset + actingBlockLength)), actingBlockLength_(actingBlockLength),
+        actingVersion_(actingVersion) {}
+
+  constexpr {{ message_class_name }}(std::byte* buffer, std::size_t bufferLength)
+      : {{ message_class_name  }}(buffer, 0, bufferLength, sbeBlockLength(), sbeSchemaVersion()) {}
+
+  constexpr {{ message_class_name }}(std::byte* buffer, std::size_t bufferLength, std::size_t actingBlockLength,
+      std::uint16_t actingVersion)
+      : {{ message_class_name }}(buffer, 0, bufferLength, actingBlockLength, actingVersion) {}
+
+  static constexpr {{ message_class_name }} wrapAndApplyHeader(std::byte* buffer, std::size_t offset, std::size_t bufferLength) {
+    auto header = MessageHeader(buffer, offset, bufferLength, sbeSchemaVersion());
+    header.field<"blockLength">().setValue(sbeBlockLength());
+    header.field<"templateId">().setValue(sbeTemplateId());
+    header.field<"schemaId">().setValue(sbeSchemaId());
+    header.field<"version">().setValue(sbeSchemaVersion());
+
+    return {{ message_class_name }}(buffer, offset + {{ header_class_name }}::encodedLength(), bufferLength, sbeBlockLength(), sbeSchemaVersion());
+  }
+
+  [[nodiscard]] static constexpr std::string_view name() noexcept {
+    return "{{ message.name }}";
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t id() noexcept {
+    return {{ message.id }};
+  }
+
+  [[nodiscard]] constexpr std::byte const* buffer() const noexcept {
+    return buffer_;
+  }
+
+  [[nodiscard]] constexpr std::byte* buffer() noexcept {
+    return buffer_;
+  }
+
+  [[nodiscard]] constexpr std::size_t bufferLength() const noexcept {
+    return bufferLength_;
+  }
+
+  [[nodiscard]] constexpr std::size_t offset() const noexcept {
+    return offset_;
+  }
+
+  [[nodiscard]] constexpr std::size_t sbePosition() const noexcept {
+    return position_;
+  }
+
+  constexpr void sbePosition(std::size_t value) {
+    position_ = sbeCheckPosition(value);
+  }
+
+  [[nodiscard]] constexpr std::size_t actingBlockLength() const noexcept {
+    return actingBlockLength_;
+  }
+
+  [[nodiscard]] constexpr std::uint16_t actingVersion() const noexcept {
+    return actingVersion_;
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t sbeSchemaId() noexcept {
+    return {{ schema.id }};
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t sbeSchemaVersion() noexcept {
+    return {{ schema.version }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeBlockLength() noexcept {
+    return {{ message.block_length }};
+  }
+
+  [[nodiscard]] static constexpr std::uint16_t sbeTemplateId() noexcept {
+    return {{ message.id }};
+  }
+
+  constexpr std::size_t sbeCheckPosition(std::size_t position) {
+    if (position > bufferLength_) [[unlikely]] {
+      throw std::runtime_error("buffer too short for message {{ message.name }} [E100]");
+    }
+    return position;
+  }
+
+  constexpr {{ message_class_name }}& sbeRewind() {
+    return *this = {{ message_class_name }}(buffer_, offset_, bufferLength_, actingBlockLength_, actingVersion_);
+  }
+
+  [[nodiscard]] constexpr std::size_t encodedLength() const noexcept {
+    return sbePosition() - offset_;
+  }
+
+  template <std::size_t N>
+  [[nodiscard]] constexpr auto field() noexcept -> FieldByIndex<Fields, N> {
+    using F = FieldByIndex<Fields, N>;
+
+    if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Group>) {
+      return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
+    } else if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Data>) {
+      return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
+    } else {
+      return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
+    }
+  }
+
+  template <CtString Name>
+  [[nodiscard]] constexpr auto field() noexcept -> FieldByName<Fields, Name> {
+    using F = FieldByName<Fields, Name>;
+
+    if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Group>) {
+      return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
+    } else if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Data>) {
+      return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
+    } else {
+      return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
+    }
+  }
+
+private:
+  [[nodiscard]] std::size_t* sbePositionPtr() noexcept {
+    return &position_;
+  }
+};
+{%- endmacro %}

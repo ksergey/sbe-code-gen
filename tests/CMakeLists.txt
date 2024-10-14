@@ -1,23 +1,20 @@
 include(FetchContent)
 
-FetchContent_Declare(doctest
-  URL https://github.com/onqtam/doctest/archive/refs/tags/2.4.6.tar.gz
-  DOWNLOAD_EXTRACT_TIMESTAMP ON
-)
-FetchContent_MakeAvailable(doctest)
+if (NOT TARGET doctest_with_main)
+  FetchContent_Declare(doctest
+    URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.11.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+  )
+  FetchContent_MakeAvailable(doctest)
+endif()
 
-function(AddTest NAME)
-  set(options)
-  set(oneValueArgs SOURCE)
-  set(multiValueArgs LIBS)
-
-  cmake_parse_arguments(PARSED "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
-
-  add_executable(${NAME} ${PARSED_SOURCE})
-  target_compile_options(${NAME} PRIVATE -Wall -Wextra)
-  target_link_libraries(${NAME} PRIVATE ${PARSED_LIBS})
-  add_test(${NAME} ${NAME})
-endfunction()
+if (NOT TARGET fmt::fmt)
+  FetchContent_Declare(fmt
+    URL https://github.com/fmtlib/fmt/archive/refs/tags/11.0.2.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+  )
+  FetchContent_MakeAvailable(fmt)
+endif()
 
 enable_testing()
 
@@ -27,7 +24,22 @@ SBEMakeCodec(basic-group-schema
   GENERATOR cppng
 )
 
-AddTest(basic_group_schema_test
-  SOURCE basic-group-schema_test.cpp
-  LIBS doctest_with_main basic-group-schema
+set(Target basic-group-schema_test)
+add_executable(${Target} basic-group-schema_test.cpp)
+target_compile_features(${Target} PRIVATE cxx_std_20)
+target_compile_options(${Target} PRIVATE -Wall -Wextra)
+target_link_libraries(${Target} PRIVATE doctest_with_main basic-group-schema)
+add_test(${Target} ${Target})
+
+SBEMakeCodec(spot_2_0
+  SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/../resources/spot_2_0.xml
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/spot_2_0
+  GENERATOR cppng
 )
+
+set(Target Binance_exchangeInfo_test)
+add_executable(${Target} Binance_exchangeInfo_test.cpp)
+target_compile_features(${Target} PRIVATE cxx_std_20)
+target_compile_options(${Target} PRIVATE -Wall -Wextra)
+target_link_libraries(${Target} PRIVATE doctest_with_main fmt::fmt spot_2_0)
+add_test(${Target} ${Target})

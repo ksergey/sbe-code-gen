@@ -2,6 +2,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license
 
 from jinja2 import Environment, FileSystemLoader
+from typing import Optional
 import pathlib
 import os
 
@@ -17,83 +18,81 @@ class Generator(GeneratorBase):
             lstrip_blocks = True,
             keep_trailing_newline = True
         )
-        self.addFilters()
+        self.add_filters()
 
-    def _generateImpl(self, schema: dict) -> None:
-        self.ensurePathExists()
+    def _generate_impl(self, schema: dict) -> None:
+        self.ensure_path_exists()
 
-        for encodedType in schema['types']:
-            documentName = self.makeDocumentName(encodedType['name'])
-            if encodedType['token'] == 'type':
+        self.generate_document('mp.h', 'mp.h')
+        self.generate_document('typing.h', 'typing.h')
+        self.generate_document('schema.h', 'schema.tmpl', schema=schema, includes=self.generate_includes(schema))
+
+        for encoded_type in schema['types']:
+            document_name = self.make_document_name(encoded_type['name'])
+            if encoded_type['token'] == 'type':
                 pass
-            elif encodedType['token'] == 'composite':
-                self.generateDocument(documentName, 'composite.tmpl', type = encodedType, schema = schema,
-                                      includes = self.generateIncludesForComposite(encodedType))
-            elif encodedType['token'] == 'enum':
-                self.generateDocument(documentName, 'enum.tmpl', type = encodedType, schema = schema)
-            elif encodedType['token'] == 'set':
-                self.generateDocument(documentName, 'set.tmpl', type = encodedType, schema = schema)
+            elif encoded_type['token'] == 'composite':
+                self.generate_document(document_name, 'composite.tmpl', type=encoded_type, schema=schema,
+                                       includes=self.generate_includes_for_composite(encoded_type))
+            elif encoded_type['token'] == 'enum':
+                self.generate_document(document_name, 'enum.tmpl', type=encoded_type, schema=schema)
+            elif encoded_type['token'] == 'set':
+                self.generate_document(document_name, 'set.tmpl', type=encoded_type, schema=schema)
 
         for message in schema['messages']:
-            documentName = self.makeDocumentName(message['name'])
-            self.generateDocument(documentName, 'message.tmpl', message = message, schema = schema,
-                                  includes = self.generateIncludesForMessage(message, schema))
+            document_name = self.make_document_name(message['name'])
+            self.generate_document(document_name, 'message.tmpl', message=message, schema=schema,
+                                  includes=self.generate_includes_for_message(message, schema))
 
-        self.generateDocument('schema.h', 'schema.tmpl', schema = schema, includes = self.generateIncludes(schema))
-        self.generateDocument('common.h', 'common.tmpl', schema = schema)
-
-    def makeDocumentName(self, name: str) -> str:
+    def make_document_name(self, name: str) -> str:
         return self.env.filters['format_class_name'](name) + '.h'
 
-    def generateDocument(self, documentName: str, templateName: str, **kwargs) -> None:
-        template = self.env.get_template(templateName)
-        documentPath = f'{self.path}/{documentName}'
-        documentContent = template.render(**kwargs)
-        with open(documentPath, mode = 'w', encoding = 'utf8') as document:
-            document.write(documentContent)
+    def generate_document(self, document_name: str, template_name: str, **kwargs) -> None:
+        template = self.env.get_template(template_name)
+        document_path = f'{self.path}/{document_name}'
+        document_content = template.render(**kwargs)
+        with open(document_path, mode='w', encoding='utf8') as document:
+            document.write(document_content)
 
-    def generateIncludesForMessage(self, message: dict, schema: dict = None) -> list:
+    def generate_includes_for_message(self, message: dict, schema: dict = None) -> list:
         includes = set()
         for field in message['fields']:
             if field['token'] == 'field':
                 if field['type']['token'] in ('composite', 'enum', 'set'):
-                    includes.add(self.makeDocumentName(field['type']['name']))
+                    includes.add(self.make_document_name(field['type']['name']))
             elif field['token'] == 'group':
-                includes.add(self.makeDocumentName(field['dimensionType']['name']))
+                includes.add(self.make_document_name(field['dimension_type']['name']))
                 # this func could be used for iterate over group fields
-                includes = includes.union(self.generateIncludesForMessage(field))
+                includes = includes.union(self.generate_includes_for_message(field))
             elif field['token'] == 'data':
-                includes.add(self.makeDocumentName(field['type']['name']))
-
+                includes.add(self.make_document_name(field['type']['name']))
         if schema != None:
-            includes.add(self.makeDocumentName(schema['headerType']['name']))
-
-        includes.add('common.h')
+            includes.add(self.make_document_name(schema['header_type']['name']))
+        includes.add('typing.h')
 
         return list(includes)
 
-    def generateIncludesForComposite(self, composite: dict) -> list:
+    def generate_includes_for_composite(self, composite: dict) -> list:
         includes = set()
-        for field in composite['containedTypes']:
+        for field in composite['contained_types']:
             if field['token'] in ('composite', 'enum', 'set'):
-                includes.add(self.makeDocumentName(field['type']['name']))
-
-        includes.add('common.h')
+                includes.add(self.make_document_name(field['name']))
+        includes.add('typing.h')
 
         return list(includes)
 
-    def generateIncludes(self, schema: dict) -> list:
+    def generate_includes(self, schema: dict) -> list:
         includes = set()
         for message in schema['messages']:
-            includes.add(self.makeDocumentName(message['name']))
+            includes.add(self.make_document_name(message['name']))
 
         return list(includes)
 
-    def ensurePathExists(self) -> None:
+    def ensure_path_exists(self) -> None:
         if not os.path.exists(self.path):
             os.makedirs(self.path)
 
-    def addFilters(self) -> None:
+    def add_filters(self) -> None:
         self.env.filters['format_class_name'] = lambda value: value[0].upper() + value[1:]
         self.env.filters['format_method_name_get'] = lambda value: value[0].lower() + value[1:]
         self.env.filters['format_method_name_set'] = lambda value: value[0].lower() + value[1:]
@@ -102,10 +101,10 @@ class Generator(GeneratorBase):
         self.env.filters['format_method_name_length'] = lambda value: value[0].lower() + value[1:] + 'Length'
         self.env.filters['format_method_name_get_count'] = lambda value: value[0].lower() + value[1:] + 'Count'
         self.env.filters['format_constant_name'] = lambda value: 'k' + value[0].upper() + value[1:]
-        self.env.filters['replace_keyword']  = Generator.filterReplaceKeword
+        self.env.filters['replace_keyword']  = Generator.filter_replace_keyword
 
     @staticmethod
-    def filterReplaceKeword(value: str) -> str:
+    def filter_replace_keyword(value: str) -> str:
         return {
             'int8':         'std::int8_t',
             'int16':        'std::int16_t',

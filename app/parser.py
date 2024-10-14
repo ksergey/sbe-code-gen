@@ -62,7 +62,7 @@ class Parser:
             id=attr(self.root, 'id', cast=int),
             version=attr(self.root, 'version', 0, cast=int),
             semantic_type=attr(self.root, 'semanticType', None),
-            byte_order=attr(self.root, 'byteOrder', 'littleEndian', cast=ByteOrder),
+            byte_order=attr(self.root, 'byteOrder', ByteOrder.LITTLE_ENDIAN, cast=ByteOrder),
             description=attr(self.root, 'description', None),
             header_type=header_type,
             types=self.get_types(),
@@ -111,7 +111,7 @@ class Parser:
     def parse_type_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Type:
         name_str = attr(node, 'name')
         presence = attr(node, 'presence', Presence.REQUIRED, cast=Presence)
-        length = attr(node, 'length', 1, cast=int)
+        length = attr(node, 'length', None)
         primitive_type = Parser.get_primitive_type(attr(node, 'primitiveType'))
         value_ref = attr(node, 'valueRef', None)
         const_value = None
@@ -130,8 +130,12 @@ class Parser:
                 const_value = node.text.strip()
                 if const_value == '':
                     raise Exception(f'node text is empty and value_ref is not set for constant type "{name_str}"')
-                if primitive_type.name == 'char' and len(const_value) != length:
-                    raise Exception(f'node text length is not equal to field length for constant type "{name_str}"')
+                if primitive_type.name == 'char':
+                    # Set length to constant size in case of string constants and length attr not set
+                    if length == None:
+                        length = len(const_value)
+                    elif len(const_value) != int(length):
+                        raise Exception(f'node text length is not equal to field length for constant type "{name_str}"')
             else:
                 enum_name, enum_value_name = value_ref.split('.')
                 enum_type = self.get_encoded_type_by_name(enum_name)
@@ -147,6 +151,10 @@ class Parser:
         if character_encoding != None:
             character_encoding.strip()
 
+        # Set default length to 1
+        if length == None:
+            length = 1
+
         return Type(
             name=name_str,
             description=attr(node, 'description', None),
@@ -154,7 +162,7 @@ class Parser:
             null_value=attr(node, 'nullValue', None),
             min_value=attr(node, 'minValue', None),
             max_value=attr(node, 'maxValue', None),
-            length=length,
+            length=int(length),
             offset=attr(node, 'offset', offset, cast=int),
             primitive_type=primitive_type,
             semantic_type=attr(node, 'semanticType', None),

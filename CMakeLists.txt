@@ -11,11 +11,10 @@ set(pythonEnv ${pythonEnvPath}/bin/python)
 add_custom_command(
   OUTPUT ${pythonEnv}
   COMMAND ${Python3_EXECUTABLE} -m venv ${pythonEnvPath}
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
   COMMAND ${pythonEnv} -m pip install --upgrade pip
   COMMAND ${pythonEnv} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
+  COMMENT "creating python virtualenv at ${pythonEnvPath}"
 )
-add_custom_target(venv DEPENDS ${pythonEnv})
 
 function(SBEMakeCodec TARGET)
   set(options)
@@ -26,7 +25,8 @@ function(SBEMakeCodec TARGET)
 
   add_custom_command(
     OUTPUT ${PARSED_OUTPUT}/schema.h
-    DEPENDS ${PARSED_SCHEMA} venv
+    DEPENDS ${PARSED_SCHEMA} ${pythonEnv}
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${PARSED_OUTPUT}"
     COMMAND ${pythonEnv} -m app --schema="${PARSED_SCHEMA}" --destination="${PARSED_OUTPUT}" --generator="${PARSED_GENERATOR}"
     WORKING_DIRECTORY ${cppCodeGenRoot}
     COMMENT "generating schema (${PARSED_SCHEMA})"

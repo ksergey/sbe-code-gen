@@ -55,7 +55,7 @@ class GeneratorBase(ABC):
             'max_value': type_type.max_value if type_type.max_value != None else type_type.primitive_type.max_value,
             'length': type_type.length,
             'offset': type_type.offset,
-            'primitive_type': type_type.primitive_type.name,
+            'primitive_type': type_type.primitive_type.name, # if type_type.character_encoding != None else 'char',
             'semantic_type': type_type.semantic_type,
             'since_version': type_type.since_version,
             'deprecated': type_type.deprecated,

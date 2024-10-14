@@ -14,7 +14,7 @@ class Presence(enum.Enum):
 
 class ByteOrder(enum.Enum):
     LITTLE_ENDIAN = 'littleEndian'
-    BIG_ENDIAN = 'bitEndian'
+    BIG_ENDIAN = 'bigEndian'
 
 @dataclass(frozen=True)
 class PrimitiveType:

@@ -1,67 +1,20 @@
 {% extends 'document.tmpl' %}
 
+{% import 'generate.tmpl' as generate %}
+
+{% block include %}
+#include <cstdint>
+#include <numeric>
+#include <string_view>
+
+#include "typing.h"
+
+{% endblock %}
+
 {% block content %}
 
-{%- set enum_class_name = type.name | format_class_name -%}
-{%- set underlying_type = type.encodingType | replace_keyword -%}
+using namespace sbe_code_gen;
 
-class {{ enum_class_name }} final {
-private:
-  {{ underlying_type }} value_;
-
-public:
-  using enum_type = void;
-
-  using underlying_type = {{ underlying_type }};
-
-  enum enumerated : {{ underlying_type }} {
-{% for validValue in type.validValues %}
-  {% if type.encodingType == 'char' %}
-    {{ validValue.name }} = '{{ validValue.value }}',
-    {% else %}
-    {{ validValue.name }} = {{ validValue.value }},
-  {% endif %}
-{% endfor %}
-    NULL_VALUE = {{ type.nullValue | replace_keyword }}
-  };
-
-  constexpr {{ enum_class_name }}() noexcept : {{ enum_class_name }}(enumerated::NULL_VALUE) {}
-
-  constexpr {{ enum_class_name }}(enumerated value) noexcept : value_(value) {}
-
-  explicit constexpr {{ enum_class_name }}({{ underlying_type }} value) noexcept : value_(value) {}
-
-  [[nodiscard]] constexpr operator enumerated() const noexcept {
-    return enumerated(value_);
-  }
-
-  [[nodiscard]] static constexpr std::string_view toString({{ enum_class_name }} value) noexcept {
-    using namespace std::string_view_literals;
-
-    switch (value) {
-{% for validValue in type.validValues %}
-      case {{ enum_class_name }}::{{ validValue.name }}:
-        return "{{ validValue.name }}"sv;
-{% endfor %}
-      default:
-        break;
-    }
-    return ""sv;
-  }
-
-  [[nodiscard]] static constexpr {{ enum_class_name }} fromString(std::string_view value) noexcept {
-    using namespace std::string_view_literals;
-{% for validValue in type.validValues %}
-    if ("{{ validValue.name }}"sv == value) {
-      return {{ enum_class_name }}::{{ validValue.name }};
-    }
-{% endfor %}
-    return NULL_VALUE;
-  }
-
-  [[nodiscard]] friend constexpr auto operator<=>({{ enum_class_name }} const& a, {{ enum_class_name }} const& b) noexcept {
-    return a.value_ <=> b.value_;
-  };
-};
+{{ generate.enum_definition(type, schema) }}
 
 {% endblock %}

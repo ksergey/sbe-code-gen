@@ -1,36 +1,26 @@
 // Generated simple binary encoding message codec
-// Message codec generator: https://github.com/TheBoysCoding/sbe-code-gen
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
 
 #pragma once
 
 {% block include %}
-#include <algorithm>
-#include <bit>
-#include <cmath>
-#include <cstdint>
-#include <cstring>
-#include <limits>
-#include <span>
-#include <stdexcept>
-#include <string_view>
-
-{% for include in includes | sort %}
+{% for include in includes | sort(case_sensitive=True) %}
 #include "{{ include }}"
 {% endfor %}
-{{- '' -}}
-{% endblock %}
+
+{% endblock -%}
 
 {% if schema.package != None %}
 namespace {{ schema.package | join('::') | replace(' ', '_') }} {
 {% else %}
 namespace sbe {
-{% endif %}
+{% endif -%}
 
 {% block content %}
-{% endblock %}
+{% endblock -%}
 
 {% if schema.package != None %}
 } // namespace {{ schema.package | join('::') | replace(' ', '_') }}
 {% else %}
 } // namespace sbe
-{% endif %}
+{% endif -%}
