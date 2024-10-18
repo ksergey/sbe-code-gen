@@ -16,27 +16,35 @@ add_custom_command(
   COMMENT "creating python virtualenv at ${pythonEnvPath}"
 )
 
-function(SBEMakeCodec TARGET)
+function(sbe_make_codec TARGET)
   set(options)
-  set(oneValueArgs SCHEMA OUTPUT GENERATOR)
+  set(oneValueArgs SCHEMA OUTPUT GENERATOR INCLUDE_BASE)
   set(multiValueArgs)
 
   cmake_parse_arguments(PARSED "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
+  if (PARSED_INCLUDE_BASE)
+    set(destDir "${PARSED_OUTPUT}/${PARSED_INCLUDE_BASE}")
+  else()
+    set(destDir "${PARSED_OUTPUT}")
+  endif()
+
   add_custom_command(
-    OUTPUT ${PARSED_OUTPUT}/schema.h
+    OUTPUT ${destDir}/schema.h
     DEPENDS ${PARSED_SCHEMA} ${pythonEnv}
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${PARSED_OUTPUT}"
-    COMMAND ${pythonEnv} -m app --schema="${PARSED_SCHEMA}" --destination="${PARSED_OUTPUT}" --generator="${PARSED_GENERATOR}"
+    COMMAND ${pythonEnv} -m app --schema="${PARSED_SCHEMA}" --destination="${destDir}" --generator="${PARSED_GENERATOR}"
     WORKING_DIRECTORY ${cppCodeGenRoot}
     COMMENT "generating schema (${PARSED_SCHEMA})"
   )
 
   add_library(${TARGET} INTERFACE)
   target_compile_features(${TARGET} INTERFACE cxx_std_20)
-  target_sources(${TARGET} INTERFACE ${PARSED_OUTPUT}/schema.h)
+  target_sources(${TARGET} INTERFACE ${destDir}/schema.h)
   target_include_directories(${TARGET} INTERFACE "${PARSED_OUTPUT}")
 endfunction()
+
+enable_testing()
 
 add_subdirectory(tests EXCLUDE_FROM_ALL)
 add_subdirectory(example EXCLUDE_FROM_ALL)

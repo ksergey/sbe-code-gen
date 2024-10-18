@@ -2,7 +2,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license
 
 from __future__ import annotations
+import os
 import xml.etree.ElementTree as ET
+import xml.etree.ElementInclude as EI
 from typing import ClassVar, Optional, Any
 
 class SentinelClass:
@@ -17,14 +19,14 @@ class SentinelClass:
 SENTINEL = SentinelClass.getInstance()
 
 def load_xml_from_file(path: str) -> ET.Element:
-    file = open(path, 'r', encoding='utf-8')
-    it = ET.iterparse(file)
+    root = ET.parse(path).getroot()
+    EI.include(root, base_url=path)
 
     # strip namespace
-    for _, el in it:
+    for el in root.iter():
         _, _, el.tag = el.tag.rpartition('}')
 
-    return it.root
+    return root
 
 def attr(node: ET.Element, name: str, default: Any = SENTINEL, cast = SENTINEL) -> Any:
     if name in node.attrib:

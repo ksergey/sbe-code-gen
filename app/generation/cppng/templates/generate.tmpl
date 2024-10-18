@@ -27,8 +27,14 @@ SOMETHING_GOES_WRONG
 {% macro field_encoding_type(type) %}
 {% if type.token in ('type', 'set', 'enum') %}
 sbe_code_gen::Encoding<{{ type.name | format_class_name }}>
-{% else %}
+{% elif type.token == 'composite' %}
 {{ type.name | format_class_name }}
+{% elif type.token == 'group' %}
+{{ type.name | format_group_name }}
+{% elif type.token == 'data' %}
+{{ type.name | format_data_name }}
+{% else %}
+struct unknown_encoding_token
 {% endif %}
 {% endmacro %}
 
@@ -235,8 +241,19 @@ private:
 
 public:
 {# XXX: define plain types #}
-{% for contained_type in type.contained_types %}
+{% for contained_type in type.contained_types if contained_type.token == 'type' %}
   {{ plain_type_definition(contained_type) | indent(2) }}
+
+{% endfor %}
+{# XXX: define inplace types #}
+{% for contained_type in type.contained_types if contained_type.inplace %}
+  {% if contained_type.token == 'enum' %}
+  {{ enum_definition(contained_type) | indent(2) }}
+  {% elif contained_type.token == 'set' %}
+  {{ set_definition(contained_type) | indent(2) }}
+  {% elif contained_type.token == 'composite' %}
+  {{ composite_definition(contained_type) | indent(2) }}
+  {% endif %}
 
 {% endfor %}
   using Fields = MP_List<
@@ -311,11 +328,11 @@ public:
 {% if data.description %}
 // description: {{data.description }}
 {% endif %}
-using {{ data.name | format_class_name }} = sbe_code_gen::Data<{{ data.type.name | format_class_name }}>;
+using {{ data.name | format_data_name }} = sbe_code_gen::Data<{{ data.type.name | format_class_name }}>;
 {%- endmacro %}
 
 {% macro group_definition(group, schema) -%}
-{% set group_class_name = group.name | format_class_name -%}
+{% set group_class_name = group.name | format_group_name -%}
 {% set dimensions_type_class_name = group.dimension_type.name | format_class_name -%}
 {% set num_in_group_type = (group.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
 

@@ -108,7 +108,7 @@ class Parser:
             const_value=None
         )
 
-    def parse_type_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Type:
+    def parse_type_from_node(self, node: ET.Element, offset: Optional[int] = None, inplace: bool = False) -> Type:
         name_str = attr(node, 'name')
         presence = attr(node, 'presence', Presence.REQUIRED, cast=Presence)
         length = attr(node, 'length', None)
@@ -170,10 +170,11 @@ class Parser:
             deprecated=attr(node, 'deprecated', None, cast=int),
             value_ref=value_ref,
             const_value=const_value,
-            character_encoding=character_encoding
+            character_encoding=character_encoding,
+            inplace=inplace
         )
 
-    def parse_composite_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Composite:
+    def parse_composite_from_node(self, node: ET.Element, offset: Optional[int] = None, inplace: bool = False) -> Composite:
         name_str = attr(node, 'name')
         # used for compute offset for each type inside composite
         computed_offset = 0
@@ -182,13 +183,13 @@ class Parser:
         for child in node:
             contained_type = None
             if child.tag == 'type':
-                contained_type = self.parse_type_from_node(child, offset=computed_offset)
+                contained_type = self.parse_type_from_node(child, offset=computed_offset, inplace=True)
             elif child.tag == 'composite':
-                contained_type = self.parse_composite_from_node(child, offset=computed_offset)
+                contained_type = self.parse_composite_from_node(child, offset=computed_offset, inplace=True)
             elif child.tag == 'enum':
-                contained_type = self.parse_enum_from_node(child, offset=computed_offset)
+                contained_type = self.parse_enum_from_node(child, offset=computed_offset, inplace=True)
             elif child.tag == 'set':
-                contained_type = self.parse_set_from_node(child, offset=computed_offset)
+                contained_type = self.parse_set_from_node(child, offset=computed_offset, inplace=True)
             elif child.tag == 'ref':
                 contained_type = self.parse_ref_from_node(child, offset=computed_offset)
             else:
@@ -207,7 +208,8 @@ class Parser:
             semantic_type=attr(node, 'semanticType', None),
             since_version=attr(node, 'sinceVersion', 0, cast=int),
             deprecated=attr(node, 'deprecated', None, cast=int),
-            contained_types=contained_types
+            contained_types=contained_types,
+            inplace=inplace
         )
 
     def parse_valid_value_from_node(self, node: ET.Element) -> ValidValue:
@@ -219,7 +221,7 @@ class Parser:
             value=node.text.strip()
         )
 
-    def parse_enum_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Enum:
+    def parse_enum_from_node(self, node: ET.Element, offset: Optional[int] = None, inplace: bool = False) -> Enum:
         name_str = attr(node, 'name')
         valid_value_by_name = UniqueKeysDict()
 
@@ -239,7 +241,8 @@ class Parser:
             deprecated=attr(node, 'deprecated', None, cast=int),
             offset=attr(node, 'offset', offset, cast=int),
             null_value=attr(node, 'nullValue', None),
-            valid_value_by_name=valid_value_by_name
+            valid_value_by_name=valid_value_by_name,
+            inplace=inplace
         )
 
     def parse_choice_from_node(self, node: ET.Element) -> Choice:
@@ -251,7 +254,7 @@ class Parser:
             value=node.text.strip()
         )
 
-    def parse_set_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Set:
+    def parse_set_from_node(self, node: ET.Element, offset: Optional[int] = None, inplace: bool = False) -> Set:
         name_str = attr(node, 'name')
         choice_by_name = UniqueKeysDict()
 
@@ -269,7 +272,8 @@ class Parser:
             since_version=attr(node, 'sinceVersion', 0, cast=int),
             deprecated=attr(node, 'deprecated', None, cast=int),
             offset=attr(node, 'offset', offset, cast=int),
-            choice_by_name=choice_by_name
+            choice_by_name=choice_by_name,
+            inplace=inplace
         )
 
     def parse_ref_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Ref:

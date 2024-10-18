@@ -75,7 +75,7 @@ class Generator(GeneratorBase):
     def generate_includes_for_composite(self, composite: dict) -> list:
         includes = set()
         for field in composite['contained_types']:
-            if field['token'] in ('composite', 'enum', 'set'):
+            if field['token'] in ('composite', 'enum', 'set') and not field['inplace']:
                 includes.add(self.make_document_name(field['name']))
         includes.add('typing.h')
 
@@ -94,14 +94,9 @@ class Generator(GeneratorBase):
 
     def add_filters(self) -> None:
         self.env.filters['format_class_name'] = lambda value: value[0].upper() + value[1:]
-        self.env.filters['format_method_name_get'] = lambda value: value[0].lower() + value[1:]
-        self.env.filters['format_method_name_set'] = lambda value: value[0].lower() + value[1:]
-        self.env.filters['format_method_name_is_present'] = lambda value: 'is' + value[0].upper() + value[1:] + 'Present'
-        self.env.filters['format_method_name_reset'] = lambda value: value[0].lower() + value[1:] + 'Reset'
-        self.env.filters['format_method_name_length'] = lambda value: value[0].lower() + value[1:] + 'Length'
-        self.env.filters['format_method_name_get_count'] = lambda value: value[0].lower() + value[1:] + 'Count'
-        self.env.filters['format_constant_name'] = lambda value: 'k' + value[0].upper() + value[1:]
         self.env.filters['replace_keyword']  = Generator.filter_replace_keyword
+        self.env.filters['format_group_name'] = lambda value: value[0].upper() + value[1:] + 'Group'
+        self.env.filters['format_data_name'] = lambda value: value[0].upper() + value[1:] + 'Data'
 
     @staticmethod
     def filter_replace_keyword(value: str) -> str:

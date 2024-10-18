@@ -1,25 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    xmlns:xi="http://www.w3.org/2001/XInclude"
-                   package="com.github.jitwxs.sample.aeron.sbe2"
+                   package="baseline"
                    id="1"
                    version="0"
                    semanticVersion="5.2"
                    description="Example base schema which can be extended."
                    byteOrder="littleEndian">
-    <xi:include href="sbe-example2-common-types.xml"/>
+    <xi:include href="common-types.xml"/>
     <types>
         <type name="ModelYear" primitiveType="uint16"/>
         <type name="VehicleCode" primitiveType="char" length="6" characterEncoding="ASCII"/>
         <type name="Ron" primitiveType="uint8" minValue="90" maxValue="110"/>
         <type name="someNumbers" primitiveType="uint32" length="4"/>
         <type name="Percentage" primitiveType="int8" minValue="0" maxValue="100"/>
-    	<composite name="messageHeader" description="Message identifiers and length of message root.">
-    	    <type name="blockLength" primitiveType="uint16"/>
-    	    <type name="templateId" primitiveType="uint16"/>
-    	    <type name="schemaId" primitiveType="uint16"/>
-    	    <type name="version" primitiveType="uint16"/>
-    	</composite>
         <composite name="Booster">
             <enum name="BoostType" encodingType="char">
                 <validValue name="TURBO">T</validValue>
@@ -28,13 +22,6 @@
                 <validValue name="KERS">K</validValue>
             </enum>
             <type name="horsePower" primitiveType="uint8"/>
-            <composite name="Extra">
-                <type name="Flags" primitiveType="uint16"/>
-                <enum name="ExType" encodingType="char">
-                    <validValue name="TURBO">T</validValue>
-                    <validValue name="KERS">K</validValue>
-                </enum>
-            </composite>
         </composite>
         <composite name="Engine">
             <type name="capacity" primitiveType="uint16"/>
@@ -45,18 +32,6 @@
             <ref name="efficiency" type="Percentage"/>
             <ref name="boosterEnabled" type="BooleanType"/>
             <ref name="booster" type="Booster"/>
-        </composite>
-    	<composite name="varAsciiEncoding" description="Variable length ASCII String.">
-    	    <type name="length" primitiveType="uint32" maxValue="1073741824"/>
-    	    <type name="varData" primitiveType="uint8" length="0" characterEncoding="ASCII"/>
-    	</composite>
-        <composite name="varStringEncoding" description="Variable length UTF-8 String.">
-            <type name="length" primitiveType="uint32" maxValue="1073741824"/>
-            <type name="varData" primitiveType="uint8" length="0" characterEncoding="UTF-8"/>
-        </composite>
-        <composite name="groupSizeEncoding" description="Repeating group dimensions.">
-            <type name="blockLength" primitiveType="uint16"/>
-            <type name="numInGroup" primitiveType="uint16"/>
         </composite>
         <enum name="BooleanType" encodingType="uint8" description="Boolean Type.">
             <validValue name="F" description="False value representation.">0</validValue>

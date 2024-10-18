@@ -3,6 +3,6 @@
 
 #pragma once
 
-{% for include in includes | sort %}
-#include "{{ include }}"
+{% for message in schema.messages | sort(attribute='name') %}
+#include "{{ message.name | format_class_name }}.h"
 {% endfor %}

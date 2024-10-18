@@ -41,6 +41,7 @@ class Type:
     value_ref: Optional[str] = field(default=None)
     const_value: Optional[str] = field(default=None)
     character_encoding: Optional[str] = field(default=None)
+    inplace: bool = field(default=False)
 
     def encoded_length(self) -> int:
         if self.presence == Presence.CONSTANT:
@@ -57,6 +58,7 @@ class Composite:
     since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
     contained_types: Dict[str, Union[Type, Composite, Enum, Set, Ref]] = field(default_factory=dict)
+    inplace: bool = field(default=False)
 
     def encoded_length(self) -> int:
         length = 0
@@ -118,6 +120,7 @@ class Enum:
     offset: Optional[int] = field(default=None)
     null_value: Optional[str] = field(default=None)
     valid_value_by_name: Dict[str, ValidValue] = field(default_factory=dict)
+    inplace: bool = field(default=False)
 
     def encoded_length(self) -> int:
         return self.encoding_type.size
@@ -140,6 +143,7 @@ class Set:
     deprecated: Optional[int] = field(default=None)
     offset: Optional[int] = field(default=None)
     choice_by_name: Dict[str, Choice] = field(default_factory=dict)
+    inplace: bool = field(default=False)
 
     def encoded_length(self) -> int:
         return self.encoding_type.size

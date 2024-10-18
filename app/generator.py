@@ -61,7 +61,8 @@ class GeneratorBase(ABC):
             'deprecated': type_type.deprecated,
             'const_value': type_type.const_value,
             'character_encoding': type_type.character_encoding,
-            'encoded_length': type_type.encoded_length()
+            'encoded_length': type_type.encoded_length(),
+            'inplace': type_type.inplace
         }
 
     @staticmethod
@@ -97,7 +98,8 @@ class GeneratorBase(ABC):
             'since_version': composite_type.since_version,
             'deprecated': composite_type.deprecated,
             'contained_types': contained_types,
-            'encoded_length': composite_type.encoded_length()
+            'encoded_length': composite_type.encoded_length(),
+            'inplace': composite_type.inplace
         }
 
     @staticmethod
@@ -122,7 +124,8 @@ class GeneratorBase(ABC):
             'offset': enum_type.offset,
             'null_value': enum_type.null_value if enum_type.null_value != None else enum_type.encoding_type.null_value,
             'valid_values': valid_values,
-            'encoded_length': enum_type.encoded_length()
+            'encoded_length': enum_type.encoded_length(),
+            'inplace': enum_type.inplace
         }
 
     @staticmethod
@@ -146,7 +149,8 @@ class GeneratorBase(ABC):
             'deprecated': set_type.deprecated,
             'offset': set_type.offset,
             'choices': choices,
-            'encoded_length': set_type.encoded_length()
+            'encoded_length': set_type.encoded_length(),
+            'inplace': set_type.inplace
         }
 
     @staticmethod
