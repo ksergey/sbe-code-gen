@@ -18,6 +18,20 @@ std::size_t encodeMessageHeader(MessageHeader& header) noexcept {
   return header.encodedLength();
 }
 
+std::size_t encodeCar(Car& body) {
+  body.field<"serialNumber">().setValue(1234);
+  body.field<"modelYear">().setValue(2013);
+  body.field<"available">().setValue(BooleanType::T);
+  body.field<"code">().setValue(Model::A);
+  body.field<"vehicleCode">().setValue("abcdef");
+  {
+    std::array<std::uint32_t, 4> data = {0, 1, 2, 3};
+    body.field<"someNumbers">().setValue(std::span(data));
+  }
+
+  return body.encodedLength();
+}
+
 TEST_CASE("MessageHeader") {
   std::array<std::byte, 4096> storage;
 

@@ -123,6 +123,14 @@ public:
 
   explicit constexpr {{ enum_class_name }}({{ underlying_type }} value) noexcept : value_(value) {}
 
+  [[nodiscard]] constexpr {{ underlying_type }} rawValue() const noexcept {
+    return value_;
+  }
+
+  constexpr void setRawValue({{ underlying_type }} value) noexcept {
+    value_ = value;
+  }
+
   [[nodiscard]] constexpr enumerated value() const noexcept {
     return enumerated(value_);
   }
@@ -255,7 +263,7 @@ public:
   {{ composite_definition(contained_type) | indent(2) }}
   {% endif %}
 
-{% endfor %}
+{%- endfor %}
   using Fields = MP_List<
 {% for contained_type in type.contained_types %}
     MP_Pair<MP_Str<"{{ contained_type.reference_name }}">, {{ field_encoding(contained_type) }}>{% if not loop.last %},{% endif +%}
