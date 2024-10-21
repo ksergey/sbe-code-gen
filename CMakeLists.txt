@@ -5,16 +5,17 @@ project(sbe-code-gen)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(cppCodeGenRoot ${CMAKE_CURRENT_SOURCE_DIR})
-set(pythonEnvPath ${CMAKE_CURRENT_BINARY_DIR}/venv)
-set(pythonEnv ${pythonEnvPath}/bin/python)
+set(pythonEnv ${CMAKE_CURRENT_BINARY_DIR}/venv)
+set(pythonExe ${pythonEnv}/bin/python)
 
 add_custom_command(
-  OUTPUT ${pythonEnv}
-  COMMAND ${Python3_EXECUTABLE} -m venv ${pythonEnvPath}
-  COMMAND ${pythonEnv} -m pip install --upgrade pip
-  COMMAND ${pythonEnv} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
-  COMMENT "creating python virtualenv at ${pythonEnvPath}"
+  OUTPUT ${pythonExe} ${pythonEnv}/pyvenv.cfg
+  COMMAND ${Python3_EXECUTABLE} -m venv ${pythonEnv}
+  COMMAND ${pythonExe} -m pip install --upgrade pip
+  COMMAND ${pythonExe} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
+  COMMENT "creating python virtualenv at ${pythonEnv}"
 )
+add_custom_target(python_venv DEPENDS ${pythonEnv}/pyvenv.cfg)
 
 function(sbe_make_codec TARGET)
   set(options)
@@ -31,9 +32,9 @@ function(sbe_make_codec TARGET)
 
   add_custom_command(
     OUTPUT ${destDir}/schema.h
-    DEPENDS ${PARSED_SCHEMA} ${pythonEnv}
+    DEPENDS ${PARSED_SCHEMA} python_venv
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${PARSED_OUTPUT}"
-    COMMAND ${pythonEnv} -m app --schema="${PARSED_SCHEMA}" --destination="${destDir}" --generator="${PARSED_GENERATOR}"
+    COMMAND ${pythonExe} -m app --schema="${PARSED_SCHEMA}" --destination="${destDir}" --generator="${PARSED_GENERATOR}"
     WORKING_DIRECTORY ${cppCodeGenRoot}
     COMMENT "generating schema (${PARSED_SCHEMA})"
   )
