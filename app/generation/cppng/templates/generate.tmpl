@@ -6,7 +6,7 @@
 {{ value | replace_keyword }}
     {% endif %}
 {% elif type.token == 'type' %}
-    {% if type.primitive_type == 'char' %}
+    {% if type.primitive_type.name == 'char' %}
         {% if type.length > 1 %}
 "{{ value }}"
         {% else %}
@@ -55,10 +55,10 @@ struct unknown_encoding_token
     {% if type.token == 'enum' %}
         {% set const_value_class = 'MP_Value<' ~ type.name | format_class_name ~ '::' ~ field.value_ref.split('.')[1] ~'>' %}
     {% elif type.token == 'type' %}
-        {% if type.primitive_type == 'char' and type.length > 1 %}
+        {% if type.primitive_type.name == 'char' and type.length > 1 %}
             {% set const_value_class = 'MP_Str<' ~  wrap_const_value(type.const_value, type) ~ '>' %}
         {% else %}
-            {% set const_value_class = 'MP_Value<' ~ type.primitive_type | replace_keyword ~ '(' ~ wrap_const_value(type.const_value, type) ~ ')>' %}
+            {% set const_value_class = 'MP_Value<' ~ type.primitive_type.name | replace_keyword ~ '(' ~ wrap_const_value(type.const_value, type) ~ ')>' %}
         {% endif %}
     {% else %}
         {% set const_value_class = 'struct MP_ConstValue_Unknown' %}
@@ -79,17 +79,45 @@ sbe_code_gen::FieldEncoding<{{ field_encoding_type(type).strip() }}, {{ presence
 {{ field_encoding_impl(field).strip() }}
 {%- endmacro -%}
 
-{% macro plain_type_definition(type) -%}
-{% set enc_type = type.primitive_type | replace_keyword -%}
+{% macro define_plain_type(type, schema) -%}
+{% if type.character_encoding and type.primitive_type.size == 1 %}
+{% set primitive_type = 'char' %}
+{% else %}
+{% set primitive_type = type.primitive_type.name | replace_keyword %}
+{% endif -%}
+
+{% if type.length == 1 %}
+{% set value_type = primitive_type %}
+{% elif type.length == 0 %}
+    {% if primitive_type == 'char' %}
+        {% set value_type = 'std::string_view' %}
+    {% else %}
+        {% set value_type = 'std::span<' ~ primitive_type ~ '>' %}
+    {% endif %}
+{% else %}
+    {% if primitive_type == 'char' %}
+        {% set value_type = 'std::string_view' %}
+    {% else %}
+        {% set value_type = 'std::span<' ~ primitive_type ~ ', ' ~ type.length ~ '>' %}
+    {% endif %}
+{% endif -%}
 
 // type: {{ type.name }}
 {% if type.description %}
 // description: {{ type.description }}
 {% endif %}
-using {{ type.name | format_class_name }} = sbe_code_gen::PlainType<{{ enc_type}}, MP_SizeT<{{ type.length }}>, MP_Value<{{ enc_type }}({{ type.min_value | replace_keyword }})>, MP_Value<{{ enc_type }}({{ type.max_value | replace_keyword }})>, MP_Value<{{ enc_type }}({{ type.null_value | replace_keyword }})>, MP_Str<"{{ type.character_encoding or "" }}">>;
+struct {{ type.name | format_class_name }} : SBEType_Type {
+  using primitive_type = {{ primitive_type }};
+  using value_type = {{ value_type }};
+  static constexpr auto length = std::size_t({{ type.length }});
+  static constexpr auto minValue = {{ primitive_type }}({{ type.min_value | replace_keyword }});
+  static constexpr auto maxValue = {{ primitive_type }}({{ type.max_value | replace_keyword }});
+  static constexpr auto nullValue = {{ primitive_type }}({{ type.null_value | replace_keyword }});
+  static constexpr auto characterEncoding = std::string_view("{{ type.character_encoding or '' }}");
+};
 {%- endmacro %}
 
-{% macro enum_definition(type, schema) -%}
+{% macro define_enum(type, schema) -%}
 {% set enum_class_name = type.name | format_class_name -%}
 {% set underlying_type = type.encoding_type | replace_keyword -%}
 
@@ -172,7 +200,7 @@ private:
 {%- endmacro %}
 
 
-{% macro set_definition(type, schema) -%}
+{% macro define_set(type, schema) -%}
 {% set set_class_name = type.name | format_class_name -%}
 {% set underlying_type = type.encoding_type | replace_keyword -%}
 
@@ -233,7 +261,7 @@ public:
 };
 {%- endmacro %}
 
-{% macro composite_definition(type, schema) -%}
+{% macro define_composite(type, schema) -%}
 {% set composite_class_name = type.name | format_class_name -%}
 
 // composite: {{ type.name }}
@@ -250,17 +278,17 @@ private:
 public:
 {# XXX: define plain types #}
 {% for contained_type in type.contained_types if contained_type.token == 'type' %}
-  {{ plain_type_definition(contained_type) | indent(2) }}
+  {{ define_plain_type(contained_type, schema) | indent(2) }}
 
 {% endfor %}
 {# XXX: define inplace types #}
 {% for contained_type in type.contained_types if contained_type.inplace %}
   {% if contained_type.token == 'enum' %}
-  {{ enum_definition(contained_type) | indent(2) }}
+  {{ define_enum(contained_type, schema) | indent(2) }}
   {% elif contained_type.token == 'set' %}
-  {{ set_definition(contained_type) | indent(2) }}
+  {{ define_set(contained_type, schema) | indent(2) }}
   {% elif contained_type.token == 'composite' %}
-  {{ composite_definition(contained_type) | indent(2) }}
+  {{ define_composite(contained_type, schema) | indent(2) }}
   {% endif %}
 
 {%- endfor %}
@@ -331,7 +359,7 @@ public:
 };
 {%- endmacro %}
 
-{% macro data_definition(data, schema) -%}
+{% macro define_data(data, schema) -%}
 // data: {{ data.name }}
 {% if data.description %}
 // description: {{data.description }}
@@ -339,7 +367,7 @@ public:
 using {{ data.name | format_data_name }} = sbe_code_gen::Data<{{ data.type.name | format_class_name }}>;
 {%- endmacro %}
 
-{% macro group_definition(group, schema) -%}
+{% macro define_group(group, schema) -%}
 {% set group_class_name = group.name | format_group_name -%}
 {% set dimensions_type_class_name = group.dimension_type.name | format_class_name -%}
 {% set num_in_group_type = (group.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
@@ -363,17 +391,17 @@ private:
 public:
 {# XXX: select field->type with field.type.token == 'type' #}
 {% for type in group.fields | selectattr('type') | map(attribute='type') | unique(attribute='name') if type.token == 'type' %}
-  {{ plain_type_definition(type) | indent(2) }}
+  {{ define_plain_type(type, schema) | indent(2) }}
 
 {% endfor %}
 {# XXX: select <group> fields #}
 {% for field in group.fields if field.token == 'group' %}
-  {{ group_definition(field, schema) | indent(2) }}
+  {{ define_group(field, schema) | indent(2) }}
 
 {% endfor %}
 {# XXX: select <data> fields #}
 {% for field in group.fields if field.token == 'data' %}
-  {{ data_definition(field, schema) | indent(2) }}
+  {{ define_data(field, schema) | indent(2) }}
 
 {% endfor %}
   using Fields = MP_List<
@@ -540,17 +568,17 @@ private:
 public:
 {# XXX: select field->type with field.type.token == 'type' #}
 {% for type in message.fields | selectattr('type') | map(attribute='type') | unique(attribute='name') if type.token == 'type' %}
-  {{ plain_type_definition(type) | indent(2) }}
+  {{ define_plain_type(type, schema) | indent(2) }}
 
 {% endfor %}
 {# XXX: select <group> fields #}
 {% for field in message.fields if field.token == 'group' %}
-  {{ group_definition(field, schema) | indent(2) }}
+  {{ define_group(field, schema) | indent(2) }}
 
 {% endfor %}
 {# XXX: select <data> fields #}
 {% for field in message.fields if field.token == 'data' %}
-  {{ data_definition(field, schema) | indent(2) }}
+  {{ define_data(field, schema) | indent(2) }}
 
 {% endfor %}
   using Fields = MP_List<

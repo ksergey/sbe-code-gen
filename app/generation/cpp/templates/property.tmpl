@@ -57,11 +57,11 @@
 {%- else %}
     {% set type = entry -%}
 {%- endif %}
-{%- set underlying_type = type.primitive_type | replace_keyword -%}
+{%- set underlying_type = type.primitive_type.name | replace_keyword -%}
 
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ underlying_type }} {{ method_name | format_method_name_get }}() noexcept {
-    {% if type.primitive_type == 'char' %}
+    {% if type.primitive_type.name == 'char' %}
     return '{{ type.const_value }}';
     {% else %}
     return {{ type.const_value }};
@@ -100,9 +100,9 @@
 
 {%- if entry.presence == 'optional' %}
 [[nodiscard]] bool {{ method_name | format_method_name_is_present }}() const noexcept {
-    {% if type.primitive_type == 'double' or type.primitive_type == 'float' %}
+    {% if type.primitive_type.name == 'double' or type.primitive_type.name == 'float' %}
     constexpr {{ underlying_type }} null = {{ type.null_value | replace_keyword }};
-    constexpr {{ underlying_type }} value = {{ method_name | format_method_name_get() }};
+    {{ underlying_type }} const value = {{ method_name | format_method_name_get }}();
     return ((null != null && value != value) || (value != null));
     {% else %}
     return {{ type.null_value | replace_keyword }} != {{ method_name | format_method_name_get }}();
@@ -118,8 +118,8 @@
 {%- else %}
     {%- set type = entry -%}
 {%- endif %}
-{%- set underlying_type = type.primitive_type | replace_keyword -%}
-{%- if type.primitive_type == 'char' %}
+{%- set underlying_type = type.primitive_type.name | replace_keyword -%}
+{%- if type.primitive_type.name == 'char' %}
     {% set value_type = 'std::string_view' -%}
 {%- else %}
     {% set value_type = 'std::span<' ~ underlying_type ~ ' const>' -%}
@@ -127,7 +127,7 @@
 
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ value_type }} {{ method_name | format_method_name_get }}() noexcept {
-    {% if type.primitive_type == 'char' %}
+    {% if type.primitive_type.name == 'char' %}
     return "{{ type.const_value }}";
     {% else %}
     assert(false, "not implemeted");
@@ -143,19 +143,19 @@
 
 {% endif %}
 
-{%- if entry.presence != 'constant' and type.primitive_type != 'char' %}
-{{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
+{%- if entry.presence != 'constant' and type.primitive_type.name != 'char' %}
+{{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) {
     if (value.size() != {{ type.length }}) [[unlikely]] {
-        # TODO
+        // TODO
         throw std::runtime_error("...");
     }
-    std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), {{ underlying_type }} * {{ type.length }});
+    std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), sizeof({{ underlying_type }}) * {{ type.length }});
     return *this;
 }
 
 {% endif %}
 
-{%- if entry.presence != 'constant' and type.primitive_type == 'char' %}
+{%- if entry.presence != 'constant' and type.primitive_type.name == 'char' %}
 {{ class_name }}& {{ method_name | format_method_name_set }}({{ value_type }} value) noexcept {
     std::size_t const lengthToCopy = std::min<std::size_t>(value.size(), {{ type.length }});
     std::memcpy(buffer_ + offset_ + {{ entry.offset }}, value.data(), lengthToCopy);
@@ -303,10 +303,10 @@
 {%- set type = entry.type -%}
 {%- set length_type = (type.contained_types | selectattr('name', 'equalto', 'length') | first) -%}
 {%- set var_data_type = (type.contained_types | selectattr('name', 'equalto', 'varData') | first) -%}
-{%- set length_underlying_type = length_type.primitive_type | replace_keyword -%}
-{%- set data_underlying_type = var_data_type.primitive_type | replace_keyword -%}
+{%- set length_underlying_type = length_type.primitive_type.name | replace_keyword -%}
+{%- set data_underlying_type = var_data_type.primitive_type.name | replace_keyword -%}
 
-{%- if var_data_type.primitive_type == 'char' or var_data_type.primitive_type == 'uint8' %}
+{%- if var_data_type.primitive_type.name == 'char' or var_data_type.primitive_type.name == 'uint8' %}
     {%- set data_underlying_type = 'char' -%}
     {%- set value_type = 'std::string_view' -%}
 {%- else %}

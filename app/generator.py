@@ -44,6 +44,16 @@ class GeneratorBase(ABC):
             return GeneratorBase.make_set_definition(encoded_type)
 
     @staticmethod
+    def make_primitive_type_definition(primitive_type: PrimitiveType) -> dict:
+        return {
+            'name': primitive_type.name,
+            'size': primitive_type.size,
+            'null_value': primitive_type.null_value,
+            'max_value': primitive_type.min_value,
+            'max_value': primitive_type.max_value
+        }
+
+    @staticmethod
     def make_type_definition(type_type: Type) -> dict:
         return {
             'token': 'type',
@@ -55,7 +65,7 @@ class GeneratorBase(ABC):
             'max_value': type_type.max_value if type_type.max_value != None else type_type.primitive_type.max_value,
             'length': type_type.length,
             'offset': type_type.offset,
-            'primitive_type': type_type.primitive_type.name, # if type_type.character_encoding != None else 'char',
+            'primitive_type': GeneratorBase.make_primitive_type_definition(type_type.primitive_type),
             'semantic_type': type_type.semantic_type,
             'since_version': type_type.since_version,
             'deprecated': type_type.deprecated,

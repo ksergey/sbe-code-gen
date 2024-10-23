@@ -184,26 +184,4 @@ struct MP_FindImpl<L<T...>, P> {
 template <typename L, template <typename...> typename P>
 using MP_Find = typename detail::MP_FindImpl<L, P>::type;
 
-template <bool C, typename T>
-struct MP_Cond {
-  static constexpr auto value = C;
-  using type = T;
-};
-
-namespace detail {
-
-template <typename...>
-struct MP_SelectImpl;
-template <typename H, typename... T>
-struct MP_SelectImpl<H, T...> : std::conditional<H::value, typename H::type, typename MP_SelectImpl<T...>::type> {};
-template <>
-struct MP_SelectImpl<> {
-  using type = struct type_eval_fail;
-};
-
-} // namespace detail
-
-template <typename... T>
-using MP_Select = typename detail::MP_SelectImpl<T...>::type;
-
 } // namespace sbe_code_gen

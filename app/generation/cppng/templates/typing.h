@@ -36,12 +36,6 @@ struct MP_ValidValue {
   static constexpr auto value = Value;
 };
 
-template <CtString Name, typename EncodingT>
-struct MP_Field {
-  static constexpr auto name = Name;
-  using encoding_type = EncodingT;
-};
-
 template <CtString Name>
 struct MP_MatchName {
   template <typename T>
@@ -83,42 +77,14 @@ struct SBEType_Data {};
 struct SBEType_Group {};
 struct SBEType_Message {};
 
-template <typename PrimitiveTypeT, typename LengthT, typename MinValueT, typename MaxValueT, typename NullValueT,
-    typename CharacterEncodingT>
-struct PlainType : SBEType_Type {
-  using primitive_type = PrimitiveTypeT;
-  static constexpr std::size_t length = LengthT::value;
-  static constexpr PrimitiveTypeT minValue = MinValueT::value;
-  static constexpr PrimitiveTypeT maxValue = MaxValueT::value;
-  static constexpr PrimitiveTypeT nullValue = NullValueT::value;
-  static constexpr std::string_view characterEncoding = CharacterEncodingT::value;
-};
-
-template <typename PlainTypeT>
-struct CppType {
-  // clang-format off
-  using type = MP_Select<
-    MP_Cond<((PlainTypeT::length != 1) and (std::is_same_v<typename PlainTypeT::primitive_type, char>)), std::string_view>,
-    MP_Cond<((PlainTypeT::length == 0) and (sizeof(typename PlainTypeT::primitive_type) == 1) and (PlainTypeT::characterEncoding != "")), std::string_view>,
-    MP_Cond<((PlainTypeT::length == 0) and (PlainTypeT::characterEncoding == "")), std::span<typename PlainTypeT::primitive_type const>>,
-    MP_Cond<(PlainTypeT::length > 1), std::span<typename PlainTypeT::primitive_type const, PlainTypeT::length>>,
-    MP_Cond<true, typename PlainTypeT::primitive_type>
-  >;
-  using primitive_type = MP_Select<
-    MP_Cond<std::is_same_v<type, std::string_view>, char>,
-    MP_Cond<true, typename PlainTypeT::primitive_type>
-  >;
-  // clang-format on
-};
-
 template <typename T>
 class Encoding;
 
 template <typename T>
   requires(std::derived_from<T, SBEType_Type>)
 struct Encoding<T> {
-  using value_type = typename CppType<T>::type;
-  using primitive_type = typename CppType<T>::primitive_type;
+  using value_type = typename T::value_type;
+  using primitive_type = typename T::primitive_type;
 
   [[nodiscard]] static constexpr bool present(std::byte const* buffer) noexcept {
     auto const value = *std::bit_cast<primitive_type const*>(buffer);
