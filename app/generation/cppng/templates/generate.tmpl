@@ -1,6 +1,6 @@
 {% macro wrap_const_value_impl(value, type) %}
 {% if type.token in ('enum', 'set') %}
-    {% if type.encoding_type == 'char' %}
+    {% if type.encoding_type.name == 'char' %}
 '{{ value }}'
     {% else %}
 {{ value | replace_keyword }}
@@ -39,123 +39,606 @@ struct unknown_encoding_token
 {% endmacro %}
 
 {% macro field_encoding_impl(field) %}
-{% set type = field.type if field.token == 'field' else field %}
-
-{% if field.presence == 'constant' %}
-    {% set presence_class = 'MP_Value<Presence::Constant>' %}
-{% elif field.presence == 'required' %}
-    {% set presence_class = 'MP_Value<Presence::Required>' %}
-{% elif field.presence == 'optional' %}
-    {% set presence_class = 'MP_Value<Presence::Optional>' %}
-{% else %}
-    {% set presence_class = 'MP_None' %}
-{% endif %}
-
-{% if field.presence == 'constant' %}
-    {% if type.token == 'enum' %}
-        {% set const_value_class = 'MP_Value<' ~ type.name | format_class_name ~ '::' ~ field.value_ref.split('.')[1] ~'>' %}
-    {% elif type.token == 'type' %}
-        {% if type.primitive_type.name == 'char' and type.length > 1 %}
-            {% set const_value_class = 'MP_Str<' ~  wrap_const_value(type.const_value, type) ~ '>' %}
-        {% else %}
-            {% set const_value_class = 'MP_Value<' ~ type.primitive_type.name | replace_keyword ~ '(' ~ wrap_const_value(type.const_value, type) ~ ')>' %}
-        {% endif %}
-    {% else %}
-        {% set const_value_class = 'struct MP_ConstValue_Unknown' %}
-    {% endif %}
-{% else %}
-    {% set const_value_class = 'MP_None' %}
-{% endif %}
-
-{% if field.token in ('type', 'set', 'enum', 'field') %}
-  {% set offset_value_class = 'MP_SizeT<' ~ field.offset ~ '>' %}
-{% else %}
-  {% set offset_value_class = 'MP_None' %}
-{% endif %}
-sbe_code_gen::FieldEncoding<{{ field_encoding_type(type).strip() }}, {{ presence_class }}, {{ offset_value_class }}, {{ const_value_class }}>
+{{ (field.reference_name or field.name) | format_encoding_class_name }}
 {% endmacro %}
 
 {%- macro field_encoding(field) -%}
 {{ field_encoding_impl(field).strip() }}
 {%- endmacro -%}
 
-{% macro define_plain_type(type, schema) -%}
-{% if type.character_encoding and type.primitive_type.size == 1 %}
-{% set primitive_type = 'char' %}
+{# ---------------------------------------------- #}
+{% macro format_presence(value) %}
+{% if value == 'required' %}
+Presence::Required
+{% elif value == 'optional' %}
+Presence::Optional
+{% elif value == 'constant' %}
+Presence::Constant
 {% else %}
-{% set primitive_type = type.primitive_type.name | replace_keyword %}
-{% endif -%}
-
-{% if type.length == 1 %}
-{% set value_type = primitive_type %}
-{% elif type.length == 0 %}
-    {% if primitive_type == 'char' %}
-        {% set value_type = 'std::string_view' %}
-    {% else %}
-        {% set value_type = 'std::span<' ~ primitive_type ~ '>' %}
-    {% endif %}
-{% else %}
-    {% if primitive_type == 'char' %}
-        {% set value_type = 'std::string_view' %}
-    {% else %}
-        {% set value_type = 'std::span<' ~ primitive_type ~ ', ' ~ type.length ~ '>' %}
-    {% endif %}
-{% endif -%}
-
-// type: {{ type.name }}
-{% if type.description %}
-// description: {{ type.description }}
+Presence(-1)
 {% endif %}
-struct {{ type.name | format_class_name }} : SBEType_Type {
+{% endmacro %}
+
+{% macro define_field_encoding_type_0(field, schema) -%}
+{% set type = field.type if field.token == 'field' else field -%}
+{% set class_name = (field.name if field.token == 'field' else field.reference_name) | format_encoding_class_name -%}
+
+class {{ class_name }} : public SBEType_Type {
+public:
+  constexpr {{ class_name }}([[maybe_unused]] std::byte* buffer, [[maybe_unused]] std::size_t offset,
+      [[maybe_unused]] std::size_t bufferLength, [[maybe_unused]] std::uint16_t actingVersion) noexcept {}
+
+  [[nodiscard]] static constexpr Presence sbePresence() noexcept {
+    return {{ format_presence(field.presence).strip() }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeOffset() noexcept {
+    return {{ field.offset }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeEncodedLength() noexcept {
+    return {{ type.encoded_length }};
+  }
+
+  [[nodiscard]] static constexpr bool present() noexcept {
+    return false;
+  }
+};
+{%- endmacro %}
+
+{% macro define_field_encoding_type_1(field, schema) -%}
+{% set type = field.type if field.token == 'field' else field -%}
+{% set class_name = (field.name if field.token == 'field' else field.reference_name) | format_encoding_class_name -%}
+{% set primitive_type = type.primitive_type.name | replace_keyword -%}
+
+{% set is_required = field.presence == 'required' -%}
+{% set is_optional = field.presence == 'optional' -%}
+{% set is_constant = field.presence == 'constant' -%}
+
+class {{ class_name }} : public SBEType_Type {
+private:
+  std::byte* buffer_ = nullptr;
+
+public:
+  using value_type = {{ primitive_type }};
   using primitive_type = {{ primitive_type }};
+
+  constexpr {{ class_name }}(std::byte* buffer, std::size_t offset, [[maybe_unused]] std::size_t bufferLength,
+      [[maybe_unused]] std::uint16_t actingVersion) noexcept
+      : buffer_(buffer + offset + this->sbeOffset()) {}
+
+  [[nodiscard]] static constexpr Presence sbePresence() noexcept {
+    return {{ format_presence(field.presence).strip() }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeOffset() noexcept {
+    return {{ field.offset }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeEncodedLength() noexcept {
+    return {{ type.encoded_length }};
+  }
+
+{% if is_constant or is_required %}
+  [[nodiscard]] static constexpr bool present() noexcept {
+    return true;
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_optional %}
+  [[nodiscard]] constexpr bool present() const noexcept {
+  {% if is_floating_point_type %}
+    constexpr {{ primitive_type }} kNullValue = {{ type.null_value | replace_keyword }};
+    auto const value = *this->data();
+    if constexpr (kNullValue != kNullValue) {
+        return !(value != value);
+    }
+    return value != kNullValue;
+  {% else %}
+    return *this->data() != {{ type.null_value | replace_keyword }};
+  {% endif %}
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_constant %}
+  [[nodiscard]] static constexpr {{ primitive_type }} value() noexcept {
+    return {{ wrap_const_value(type.const_value, type) }};
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_required or is_optional %}
+  [[nodiscard]] constexpr {{ primitive_type }} value() const noexcept {
+    return *this->data();
+  }
+
+  constexpr void setValue({{ primitive_type }} value) noexcept {
+    *this->data() = value;
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_optional %}
+  void reset() noexcept {
+    *this->data() = {{ primitive_type }}({{ type.null_value | replace_keyword }});
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_required or is_optional %}
+private:
+  [[nodiscard]] constexpr {{ primitive_type }} const* data() const noexcept {
+    return std::bit_cast<{{ primitive_type }} const*>(buffer_);
+  }
+
+  [[nodiscard]] constexpr {{ primitive_type }}* data() noexcept {
+    return std::bit_cast<{{ primitive_type }}*>(buffer_);
+  }
+{% endif %}
+};
+{%- endmacro %}
+
+{% macro define_field_encoding_type_N(field, schema) -%}
+{% set type = field.type if field.token == 'field' else field -%}
+{% set class_name = (field.name if field.token == 'field' else field.reference_name) | format_encoding_class_name -%}
+{% set primitive_type = 'char' if type.character_encoding and type.primitive_type.size == 1 else type.primitive_type.name | replace_keyword -%}
+{% set value_type = 'std::string_view' if primitive_type == 'char' else 'std::span<' ~ primitive_type ~ ' const, ' ~ type.length ~ '>' -%}
+
+{% set is_string = value_type == 'std::string_view' -%}
+
+{% set is_required = field.presence == 'required' -%}
+{% set is_optional = field.presence == 'optional' -%}
+{% set is_constant = field.presence == 'constant' -%}
+
+class {{ class_name }} : public SBEType_Type {
+private:
+  std::byte* buffer_ = nullptr;
+
+public:
   using value_type = {{ value_type }};
-  static constexpr auto length = std::size_t({{ type.length }});
-  static constexpr auto minValue = {{ primitive_type }}({{ type.min_value | replace_keyword }});
-  static constexpr auto maxValue = {{ primitive_type }}({{ type.max_value | replace_keyword }});
-  static constexpr auto nullValue = {{ primitive_type }}({{ type.null_value | replace_keyword }});
-  static constexpr auto characterEncoding = std::string_view("{{ type.character_encoding or '' }}");
+  using primitive_type = {{ primitive_type }};
+
+  constexpr {{ class_name }}(std::byte* buffer, std::size_t offset, [[maybe_unused]] std::size_t bufferLength,
+      [[maybe_unused]] std::uint16_t actingVersion) noexcept
+      : buffer_(buffer + offset + this->sbeOffset()) {}
+
+  [[nodiscard]] static constexpr Presence sbePresence() noexcept {
+    return {{ format_presence(field.presence).strip() }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeOffset() noexcept {
+    return {{ field.offset }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeEncodedLength() noexcept {
+    return {{ type.encoded_length }};
+  }
+
+{% if is_constant or is_required %}
+  [[nodiscard]] static constexpr bool present() noexcept {
+    return true;
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_optional %}
+  [[nodiscard]] constexpr bool present() const noexcept {
+    return *this->data() != {{ type.null_value | replace_keyword }};
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_constant %}
+  [[nodiscard]] static constexpr {{ value_type }} value() noexcept {
+    return {{ wrap_const_value(type.const_value, type) }};
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_required or is_optional %}
+  [[nodiscard]] constexpr {{ value_type }} value() const noexcept {
+  {% if is_string %}
+    {{ value_type }} str(this->data(), {{ type.length }});
+    return str.substr(0, str.find('\0'));
+  {% else %}
+    return {{ value_type }}(this->data(), {{ type.length }});
+  {% endif %}
+  }
+
+  constexpr void setValue({{ value_type }} value) noexcept {
+  {% if is_string %}
+    value = value.substr(0, {{ type.length }});
+    std::fill(std::copy(std::begin(value), std::end(value), this->data()), this->data() + {{ type.length }}, char('\0'));
+  {% else %}
+    std::copy(std::begin(value), std::end(value), this->data());
+  {% endif %}
+  }
+
+  [[nodiscard]] {{ primitive_type }} const& operator[](std::size_t n) const noexcept {
+    return this->data()[n];
+  }
+
+  [[nodiscard]] {{ primitive_type }}& operator[](std::size_t n) noexcept {
+    return this->data()[n];
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_optional %}
+  void reset() noexcept {
+    *this->data() = {{ primitive_type }}({{ type.null_value | replace_keyword }});
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_required or is_optional %}
+private:
+  [[nodiscard]] constexpr {{ primitive_type }} const* data() const noexcept {
+    return std::bit_cast<{{ primitive_type }} const*>(buffer_);
+  }
+
+  [[nodiscard]] constexpr {{ primitive_type }}* data() noexcept {
+    return std::bit_cast<{{ primitive_type }}*>(buffer_);
+  }
+{% endif %}
+};
+{%- endmacro %}
+
+{% macro define_field_encoding_type(field, schema) -%}
+{% set type = field.type if field.token == 'field' else field -%}
+// field: {{ field.name }}
+// type: {{ type.name }}
+{% if field.description %}
+// description: {{ field.description }}
+{% endif %}
+{% if type.length == 0 %}
+{{ define_field_encoding_type_0(field, schema) }}
+{% elif type.length == 1 %}
+{{ define_field_encoding_type_1(field, schema) }}
+{% elif type.length > 1 %}
+{{ define_field_encoding_type_N(field, schema) }}
+{% endif %}
+{%- endmacro %}
+
+{% macro define_field_encoding_enum(field, schema) -%}
+{% set type = field.type if field.token == 'field' else field -%}
+{% set class_name = (field.name if field.token == 'field' else field.reference_name) | format_encoding_class_name -%}
+{% set primitive_type = 'typename ' ~ type.name | format_class_name ~ '::primitive_type' -%}
+{% set value_type = type.name | format_class_name -%}
+
+{% set is_required = field.presence == 'required' -%}
+{% set is_optional = field.presence == 'optional' -%}
+{% set is_constant = field.presence == 'constant' -%}
+
+// field: {{ field.name }}
+// enum: {{ type.name }}
+{% if field.description %}
+// description: {{ field.description }}
+{% endif %}
+class {{ class_name }} : public SBEType_Enum {
+private:
+  std::byte* buffer_ = nullptr;
+
+public:
+  using value_type = {{ value_type }};
+  using primitive_type = {{ primitive_type }};
+
+  constexpr {{ class_name }}(std::byte* buffer, std::size_t offset, [[maybe_unused]] std::size_t bufferLength,
+      [[maybe_unused]] std::uint16_t actingVersion) noexcept
+      : buffer_(buffer + offset + this->sbeOffset()) {}
+
+  [[nodiscard]] static constexpr Presence sbePresence() noexcept {
+    return {{ format_presence(field.presence).strip() }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeOffset() noexcept {
+    return {{ field.offset }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeEncodedLength() noexcept {
+    return {{ type.encoded_length }};
+  }
+
+{% if is_constant or is_required %}
+  [[nodiscard]] static constexpr bool present() noexcept {
+    return true;
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_optional %}
+  [[nodiscard]] constexpr bool present() const noexcept {
+    return this->value().value() != {{ value_type }}::NULL_VALUE;
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_constant %}
+  [[nodiscard]] static constexpr {{ value_type }} value() noexcept {
+    return {{ type.name | format_class_name }}::{{ field.value_ref.split('.')[1] }};
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_required or is_optional %}
+  [[nodiscard]] constexpr {{ value_type }} value() const noexcept {
+    return {{ value_type }}(*this->data());
+  }
+
+  constexpr void setValue({{ value_type }} value) noexcept {
+    *this->data() = value.rawValue();
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_optional %}
+  constexpr void reset() noexcept {
+    this->setValue({{ value_type }}());
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_required or is_optional %}
+private:
+  [[nodiscard]] constexpr {{ primitive_type }} const* data() const noexcept {
+    return std::bit_cast<{{ primitive_type }} const*>(buffer_);
+  }
+
+  [[nodiscard]] constexpr {{ primitive_type }}* data() noexcept {
+    return std::bit_cast<{{ primitive_type }}*>(buffer_);
+  }
+{% endif %}
+};
+{%- endmacro %}
+
+{% macro define_field_encoding_set(field, schema) -%}
+{% set type = field.type if field.token == 'field' else field -%}
+{% set class_name = (field.name if field.token == 'field' else field.reference_name) | format_encoding_class_name -%}
+{% set primitive_type = 'typename ' ~ type.name | format_class_name ~ '::primitive_type' -%}
+{% set value_type = type.name | format_class_name -%}
+
+// field: {{ field.name }}
+// set: {{ type.name }}
+{% if field.description %}
+// description: {{ field.description }}
+{% endif %}
+class {{ class_name }} : public SBEType_Set {
+private:
+  std::byte* buffer_ = nullptr;
+
+public:
+  using value_type = {{ value_type }};
+  using primitive_type = {{ primitive_type }};
+
+  constexpr {{ class_name }}(std::byte* buffer, std::size_t offset, [[maybe_unused]] std::size_t bufferLength,
+      [[maybe_unused]] std::uint16_t actingVersion) noexcept
+      : buffer_(buffer + offset + this->sbeOffset()) {}
+
+  [[nodiscard]] static constexpr Presence sbePresence() noexcept {
+    return {{ format_presence(field.presence).strip() }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeOffset() noexcept {
+    return {{ field.offset }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeEncodedLength() noexcept {
+    return {{ type.encoded_length }};
+  }
+
+  [[nodiscard]] static constexpr bool present() noexcept {
+    return true;
+  }
+
+  [[nodiscard]] constexpr {{ value_type }} value() const noexcept {
+    return {{ value_type }}(*this->data());
+  }
+
+  constexpr void setValue({{ value_type }} value) noexcept {
+    *this->data() = value.rawValue();
+  }
+
+private:
+  [[nodiscard]] constexpr {{ primitive_type }} const* data() const noexcept {
+    return std::bit_cast<{{ primitive_type }} const*>(buffer_);
+  }
+
+  [[nodiscard]] constexpr {{ primitive_type }}* data() noexcept {
+    return std::bit_cast<{{ primitive_type }}*>(buffer_);
+  }
+};
+{%- endmacro %}
+
+{% macro define_field_encoding_composite(field, schema) -%}
+{% set type = field.type if field.token == 'field' else field -%}
+{% set class_name = (field.name if field.token == 'field' else field.reference_name) | format_encoding_class_name -%}
+{% set value_type = type.name | format_class_name -%}
+
+{% set is_required = type.contained_types[0].presence == 'required' -%}
+{% set is_optional = type.contained_types[0].presence == 'optional' -%}
+
+// field: {{ field.name }}
+// composite: {{ type.name }}
+{% if field.description %}
+// description: {{ field.description }}
+{% endif %}
+class {{ class_name }} : public {{ value_type }}, public SBEType_Composite {
+public:
+  using {{ value_type }}::{{ value_type }};
+
+  [[nodiscard]] static constexpr Presence sbePresence() noexcept {
+    return {{ format_presence(type.contained_types[0].presence).strip() }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeOffset() noexcept {
+    return {{ field.offset }};
+  }
+
+  [[nodiscard]] static constexpr std::size_t sbeEncodedLength() noexcept {
+    return {{ type.encoded_length }};
+  }
+
+{% if is_constant or is_required %}
+  [[nodiscard]] static constexpr bool present() noexcept {
+    return true;
+  }
+
+{% endif %}
+
+{{- '' -}}
+
+{% if is_optional %}
+  [[nodiscard]] constexpr bool present() const noexcept {
+    return this->template field<0>().present();
+  }
+
+{% endif %}
+};
+{%- endmacro %}
+
+{% macro define_field_encoding_data(field, schema) -%}
+{% set class_name = field.name | format_encoding_class_name -%}
+{% set length = (field.type.contained_types | selectattr('name', 'equalto', 'length') | first) -%}
+{% set var_data = (field.type.contained_types | selectattr('name', 'equalto', 'varData') | first) -%}
+{% set primitive_type = 'char' if var_data.character_encoding and var_data.primitive_type.size == 1 else var_data.primitive_type.name | replace_keyword -%}
+{% set value_type = 'std::string_view' if primitive_type == 'char' else 'std::span<' ~ primitive_type ~ ' const>' -%}
+{% set length_type = length.primitive_type.name | replace_keyword -%}
+
+// data: {{ field.name }}
+{% if field.description %}
+// description: {{ field.description }}
+{% endif %}
+class {{ class_name }} : public SBEType_Data {
+private:
+  std::byte* buffer_ = nullptr;
+  std::size_t bufferLength_ = 0;
+  std::size_t initialPosition_ = 0;
+  std::size_t* positionPtr_ = nullptr;
+  std::uint16_t actingVersion_ = 0;
+
+public:
+  using value_type = {{ value_type }};
+  using primitive_type = {{ primitive_type }};
+  using length_type = {{ length_type }};
+
+  constexpr {{ class_name }}(std::byte* buffer, std::size_t* pos, std::size_t bufferLength, std::uint16_t actingVersion)
+      : buffer_(buffer), bufferLength_(bufferLength), initialPosition_(*pos), positionPtr_(pos),
+        actingVersion_(actingVersion) {
+    *positionPtr_ = *positionPtr_ + {{ length.encoded_length }};
+  }
+
+  [[nodiscard]] constexpr {{ value_type }} value() {
+    std::size_t const count = *std::bit_cast<{{ length_type }} const*>(buffer_ + initialPosition_);
+    {{ primitive_type }} const* data = std::bit_cast<{{ primitive_type }} const*>(buffer_ + initialPosition_ + {{ length.encoded_length }});
+    this->sbePosition(initialPosition_ + {{ length.encoded_length }} + count * {{ var_data.primitive_type.size }});
+    return {{ value_type }}(data, count);
+  }
+
+  constexpr void setValue({{ value_type }} value) {
+    // TODO: check {{ length.min_value }}, {{ length.max_value }}
+    *std::bit_cast<{{ length_type }}*>(buffer_ + initialPosition_) = value.size();
+    {{ primitive_type }}* data = std::bit_cast<{{ primitive_type }}*>(buffer_ + initialPosition_ + {{ length.encoded_length }});
+    this->sbePosition(initialPosition_ + {{ length.encoded_length }} + value.size() * {{ var_data.primitive_type.size }});
+    std::copy(std::begin(value), std::end(value), data);
+  }
+
+  constexpr std::size_t sbeCheckPosition(std::size_t position) const {
+    if (position > bufferLength_) [[unlikely]] {
+      throw std::runtime_error("buffer too short [E100]");
+    }
+    return position;
+  }
+
+  constexpr void sbePosition(std::size_t position) {
+    *positionPtr_ = this->sbeCheckPosition(position);
+  }
+};
+{%- endmacro %}
+
+{% macro define_field_encoding_group(field, schema) -%}
+{% set class_name = field.name | format_encoding_class_name -%}
+{% set group_class_name = field.name | format_group_name -%}
+
+// group: {{ field.name }}
+{% if field.description %}
+// description: {{ field.description }}
+{% endif %}
+struct {{ class_name }} : public {{ group_class_name }}, public SBEType_Group {
+    using {{ group_class_name }}::{{ group_class_name }};
 };
 {%- endmacro %}
 
 {% macro define_enum(type, schema) -%}
-{% set enum_class_name = type.name | format_class_name -%}
-{% set underlying_type = type.encoding_type | replace_keyword -%}
+{% set class_name = type.name | format_class_name -%}
+{% set primitive_type = type.encoding_type.name | replace_keyword -%}
 
 // enum: {{ type.name }}
 {% if type.description %}
 // description: {{ type.description }}
 {% endif %}
-class {{ enum_class_name }} : public sbe_code_gen::SBEType_Enum {
+class {{ class_name }} {
 private:
-  {{underlying_type}} value_;
+  {{ primitive_type }} value_;
 
 public:
-  using primitive_type = {{ underlying_type }};
+  using primitive_type = {{ primitive_type }};
 
   using ValidValues = MP_List<
 {% for valid_value in type.valid_values %}
-    MP_Pair<MP_Str<"{{ valid_value.name }}">, MP_Value<{{ underlying_type }}({{ wrap_const_value(valid_value.value, type) }})>>{% if not loop.last %},{% endif +%}
+    MP_Pair<MP_Str<"{{ valid_value.name }}">, MP_Value<{{ primitive_type }}({{ wrap_const_value(valid_value.value, type) }})>>{% if not loop.last %},{% endif +%}
 {% endfor %}
   >;
 
-  enum enumerated : {{ underlying_type }} {
+  enum enumerated : {{ primitive_type }} {
 {% for valid_value in type.valid_values %}
     {{ valid_value.name }} = {{ wrap_const_value(valid_value.value, type) }},
 {% endfor %}
     NULL_VALUE = {{ type.null_value | replace_keyword }}
   };
 
-  constexpr {{ enum_class_name }}() noexcept : {{ enum_class_name }}(enumerated::NULL_VALUE) {}
+  constexpr {{ class_name }}() noexcept : {{ class_name }}(enumerated::NULL_VALUE) {}
 
-  constexpr {{ enum_class_name }}(enumerated value) noexcept : value_(value) {}
+  constexpr {{ class_name }}(enumerated value) noexcept : value_(value) {}
 
-  explicit constexpr {{ enum_class_name }}({{ underlying_type }} value) noexcept : value_(value) {}
+  explicit constexpr {{ class_name }}({{ primitive_type }} value) noexcept : value_(value) {}
 
-  [[nodiscard]] constexpr {{ underlying_type }} rawValue() const noexcept {
+  [[nodiscard]] constexpr {{ primitive_type }} rawValue() const noexcept {
     return value_;
   }
 
-  constexpr void setRawValue({{ underlying_type }} value) noexcept {
+  constexpr void setRawValue({{ primitive_type }} value) noexcept {
     value_ = value;
   }
 
@@ -167,7 +650,7 @@ public:
     value_ = value;
   }
 
-  [[nodiscard]] static constexpr char const* toCString({{enum_class_name}} value) noexcept {
+  [[nodiscard]] static constexpr char const* toCString({{ class_name }} value) noexcept {
     switch (value.value()) {
 {% for valid_value in type.valid_values %}
     case enumerated::{{ valid_value.name }}:
@@ -179,7 +662,7 @@ public:
     return "";
   }
 
-  [[nodiscard]] static constexpr std::string_view toStringView({{ enum_class_name }} value) noexcept {
+  [[nodiscard]] static constexpr std::string_view toStringView({{ class_name }} value) noexcept {
     using namespace std::string_view_literals;
     switch (value.value()) {
 {% for valid_value in type.valid_values %}
@@ -191,71 +674,65 @@ public:
     }
     return ""sv;
   }
-
-private:
-  [[nodiscard]] friend constexpr auto operator<=>({{ enum_class_name }} const& a, {{ enum_class_name }} const& b) noexcept {
-    return a.value_ <=> b.value_;
-  };
 };
 {%- endmacro %}
 
-
 {% macro define_set(type, schema) -%}
-{% set set_class_name = type.name | format_class_name -%}
-{% set underlying_type = type.encoding_type | replace_keyword -%}
+{% set class_name = type.name | format_class_name -%}
+{% set primitive_type = type.encoding_type.name | replace_keyword -%}
 
 // set: {{ type.name }}
 {% if type.description %}
 // description: {{ type.description }}
 {% endif %}
-class {{ set_class_name }} : public sbe_code_gen::SBEType_Set {
+class {{ class_name }} {
 private:
-  {{underlying_type}} value_ = 0;
+  {{ primitive_type }} value_ = 0;
 
 public:
-  using primitive_type = {{ underlying_type }};
+  using primitive_type = {{ primitive_type }};
 
   using Choices = MP_List<
 {% for choice in type.choices %}
-    MP_Pair<MP_Str<"{{ choice.name }}">, MP_Value<{{ underlying_type }}(1 << {{ choice.value }})>>{% if not loop.last %},{% endif +%}
+    MP_Pair<MP_Str<"{{ choice.name }}">, MP_Value<{{ primitive_type }}(1 << {{ choice.value }})>>{% if not loop.last %},{% endif +%}
 {% endfor %}
   >;
 
 {% for choice in type.choices %}
-  static constexpr auto {{ choice.name }} = {{ underlying_type }}(1 << {{ choice.value }});
+  static constexpr auto {{ choice.name }} = {{ primitive_type }}(1 << {{ choice.value }});
 {% endfor %}
 
-  constexpr {{ set_class_name }}() = default;
+  constexpr {{ class_name }}() = default;
 
-  constexpr {{ set_class_name }}({{ underlying_type }} value) noexcept : value_(value) {}
+  constexpr {{ class_name }}({{ primitive_type }} value) noexcept : value_(value) {}
 
-  [[nodiscard]] constexpr {{ underlying_type }} rawValue() const noexcept {
+  [[nodiscard]] constexpr {{ primitive_type }} rawValue() const noexcept {
     return value_;
   }
 
-  constexpr void setRawValue({{ underlying_type }} value) noexcept {
+  constexpr void setRawValue({{ primitive_type }} value) noexcept {
     value_ = value;
   }
 
-  [[nodiscard]] constexpr bool operator[]({{ underlying_type }} choiceBit) const noexcept {
+  [[nodiscard]] constexpr bool operator[]({{ primitive_type }} choiceBit) const noexcept {
     return (choiceBit == (choiceBit & this->rawValue()));
   }
 
-  [[nodiscard]] constexpr bool test({{ underlying_type }} choiceBit) const noexcept {
+  [[nodiscard]] constexpr bool test({{ primitive_type }} choiceBit) const noexcept {
     return (choiceBit == (choiceBit & this->rawValue()));
   }
 
-  constexpr {{ set_class_name }}& set({{ underlying_type }} choiceBit, bool value = true) noexcept {
+  constexpr {{ class_name }}& set({{ primitive_type }} choiceBit, bool value = true) noexcept {
     this->setRawValue(value ? (this->rawValue() | choiceBit) : (this->rawValue() & ~choiceBit));
     return *this;
   }
 
-  constexpr {{ set_class_name }}& reset() noexcept {
+  constexpr {{ class_name }}& reset() noexcept {
     this->setRawValue(0);
     return *this;
   }
 
-  constexpr {{ set_class_name }}& reset({{ underlying_type }} choiceBit) noexcept {
+  constexpr {{ class_name }}& reset({{ primitive_type }} choiceBit) noexcept {
     return this->set(choiceBit, false);
   }
 };
@@ -268,7 +745,7 @@ public:
 {% if type.description %}
 // description: {{ type.description }}
 {% endif %}
-class {{ composite_class_name }} : public sbe_code_gen::SBEType_Composite {
+class {{ composite_class_name }} {
 private:
   std::byte* buffer_ = nullptr;
   std::size_t bufferLength_ = 0;
@@ -276,22 +753,32 @@ private:
   std::uint16_t actingVersion_ = 0;
 
 public:
-{# XXX: define plain types #}
-{% for contained_type in type.contained_types if contained_type.token == 'type' %}
-  {{ define_plain_type(contained_type, schema) | indent(2) }}
-
-{% endfor %}
 {# XXX: define inplace types #}
 {% for contained_type in type.contained_types if contained_type.inplace %}
   {% if contained_type.token == 'enum' %}
-  {{ define_enum(contained_type, schema) | indent(2) }}
+  {{ define_enum(contained_type, schema) | indent(2) -}}
   {% elif contained_type.token == 'set' %}
-  {{ define_set(contained_type, schema) | indent(2) }}
+  {{ define_set(contained_type, schema) | indent(2) -}}
   {% elif contained_type.token == 'composite' %}
-  {{ define_composite(contained_type, schema) | indent(2) }}
+  {{ define_composite(contained_type, schema) | indent(2) -}}
   {% endif %}
 
-{%- endfor %}
+{% endfor %}
+{{- '' -}}
+{# XXX: define field encodings #}
+{% for contained_type in type.contained_types %}
+  {% if contained_type.token == 'type' %}
+  {{ define_field_encoding_type(contained_type, schema) | indent(2) -}}
+  {% elif contained_type.token == 'enum' %}
+  {{ define_field_encoding_enum(contained_type, schema) | indent(2) -}}
+  {% elif contained_type.token == 'set' %}
+  {{ define_field_encoding_set(contained_type, schema) | indent(2) -}}
+  {% elif contained_type.token == 'composite' %}
+  {{ define_field_encoding_composite(contained_type, schema) | indent(2) -}}
+  {% endif %}
+
+{% endfor %}
+{{- '' -}}
   using Fields = MP_List<
 {% for contained_type in type.contained_types %}
     MP_Pair<MP_Str<"{{ contained_type.reference_name }}">, {{ field_encoding(contained_type) }}>{% if not loop.last %},{% endif +%}
@@ -359,14 +846,6 @@ public:
 };
 {%- endmacro %}
 
-{% macro define_data(data, schema) -%}
-// data: {{ data.name }}
-{% if data.description %}
-// description: {{data.description }}
-{% endif %}
-using {{ data.name | format_data_name }} = sbe_code_gen::Data<{{ data.type.name | format_class_name }}>;
-{%- endmacro %}
-
 {% macro define_group(group, schema) -%}
 {% set group_class_name = group.name | format_group_name -%}
 {% set dimensions_type_class_name = group.dimension_type.name | format_class_name -%}
@@ -376,7 +855,7 @@ using {{ data.name | format_data_name }} = sbe_code_gen::Data<{{ data.type.name 
 {% if group.description %}
 // description: {{ group.description }}
 {% endif %}
-class {{ group_class_name }} : public sbe_code_gen::SBEType_Group {
+class {{ group_class_name }} {
 private:
   std::byte* buffer_ = nullptr;
   std::size_t bufferLength_ = 0;
@@ -389,21 +868,30 @@ private:
   std::size_t offset_ = 0;
 
 public:
-{# XXX: select field->type with field.type.token == 'type' #}
-{% for type in group.fields | selectattr('type') | map(attribute='type') | unique(attribute='name') if type.token == 'type' %}
-  {{ define_plain_type(type, schema) | indent(2) }}
-
-{% endfor %}
 {# XXX: select <group> fields #}
 {% for field in group.fields if field.token == 'group' %}
-  {{ define_group(field, schema) | indent(2) }}
+  {{ define_group(field, schema) | indent(2) -}}
 
 {% endfor %}
-{# XXX: select <data> fields #}
-{% for field in group.fields if field.token == 'data' %}
-  {{ define_data(field, schema) | indent(2) }}
+{% for field in group.fields %}
+  {% if field.token == 'field' %}
+    {% if field.type.token == 'type' %}
+  {{ define_field_encoding_type(field, schema) | indent(2) -}}
+    {% elif field.type.token == 'enum' %}
+  {{ define_field_encoding_enum(field, schema) | indent(2) -}}
+    {% elif field.type.token == 'set' %}
+  {{ define_field_encoding_set(field, schema) | indent(2) -}}
+    {% elif field.type.token == 'composite' %}
+  {{ define_field_encoding_composite(field, schema) | indent(2) -}}
+    {% endif %}
+  {% elif field.token == 'data' %}
+  {{ define_field_encoding_data(field, schema) | indent(2) -}}
+  {% elif field.token == 'group' %}
+  {{ define_field_encoding_group(field, schema) | indent(2) -}}
+  {% endif %}
 
 {% endfor %}
+
   using Fields = MP_List<
 {% for field in group.fields %}
      MP_Pair<MP_Str<"{{ field.name }}">, {{ field_encoding(field) }}>{% if not loop.last %},{% endif +%}
@@ -519,9 +1007,9 @@ public:
   [[nodiscard]] constexpr auto field() noexcept -> FieldByIndex<Fields, N> {
     using F = FieldByIndex<Fields, N>;
 
-    if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Group>) {
+    if constexpr (std::derived_from<F, sbe_code_gen::SBEType_Group>) {
       return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
-    } else if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Data>) {
+    } else if constexpr (std::derived_from<F, sbe_code_gen::SBEType_Data>) {
       return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
     } else {
       return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
@@ -532,9 +1020,9 @@ public:
   [[nodiscard]] constexpr auto field() noexcept -> FieldByName<Fields, Name> {
     using F = FieldByName<Fields, Name>;
 
-    if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Group>) {
+    if constexpr (std::derived_from<F, sbe_code_gen::SBEType_Group>) {
       return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
-    } else if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Data>) {
+    } else if constexpr (std::derived_from<F, sbe_code_gen::SBEType_Data>) {
       return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
     } else {
       return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
@@ -566,21 +1054,30 @@ private:
   std::uint16_t actingVersion_ = 0;
 
 public:
-{# XXX: select field->type with field.type.token == 'type' #}
-{% for type in message.fields | selectattr('type') | map(attribute='type') | unique(attribute='name') if type.token == 'type' %}
-  {{ define_plain_type(type, schema) | indent(2) }}
-
-{% endfor %}
 {# XXX: select <group> fields #}
 {% for field in message.fields if field.token == 'group' %}
-  {{ define_group(field, schema) | indent(2) }}
+  {{ define_group(field, schema) | indent(2) -}}
 
 {% endfor %}
-{# XXX: select <data> fields #}
-{% for field in message.fields if field.token == 'data' %}
-  {{ define_data(field, schema) | indent(2) }}
+{% for field in message.fields %}
+  {% if field.token == 'field' %}
+    {% if field.type.token == 'type' %}
+  {{ define_field_encoding_type(field, schema) | indent(2) -}}
+    {% elif field.type.token == 'enum' %}
+  {{ define_field_encoding_enum(field, schema) | indent(2) -}}
+    {% elif field.type.token == 'set' %}
+  {{ define_field_encoding_set(field, schema) | indent(2) -}}
+    {% elif field.type.token == 'composite' %}
+  {{ define_field_encoding_composite(field, schema) | indent(2) -}}
+    {% endif %}
+  {% elif field.token == 'data' %}
+  {{ define_field_encoding_data(field, schema) | indent(2) -}}
+  {% elif field.token == 'group' %}
+  {{ define_field_encoding_group(field, schema) | indent(2) -}}
+  {% endif %}
 
 {% endfor %}
+
   using Fields = MP_List<
 {% for field in message.fields %}
      MP_Pair<MP_Str<"{{ field.name }}">, {{ field_encoding(field) }}>{% if not loop.last %},{% endif +%}
@@ -687,9 +1184,9 @@ public:
   [[nodiscard]] constexpr auto field() noexcept -> FieldByIndex<Fields, N> {
     using F = FieldByIndex<Fields, N>;
 
-    if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Group>) {
+    if constexpr (std::derived_from<F, sbe_code_gen::SBEType_Group>) {
       return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
-    } else if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Data>) {
+    } else if constexpr (std::derived_from<F, sbe_code_gen::SBEType_Data>) {
       return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
     } else {
       return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
@@ -700,9 +1197,9 @@ public:
   [[nodiscard]] constexpr auto field() noexcept -> FieldByName<Fields, Name> {
     using F = FieldByName<Fields, Name>;
 
-    if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Group>) {
+    if constexpr (std::derived_from<F, sbe_code_gen::SBEType_Group>) {
       return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
-    } else if constexpr (std::derived_from<typename F::value_type, sbe_code_gen::SBEType_Data>) {
+    } else if constexpr (std::derived_from<F, sbe_code_gen::SBEType_Data>) {
       return F(this->buffer(), this->sbePositionPtr(), this->bufferLength(), this->actingVersion());
     } else {
       return F(this->buffer(), this->offset(), this->bufferLength(), this->actingVersion());
