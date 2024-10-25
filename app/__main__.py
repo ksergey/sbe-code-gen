@@ -12,6 +12,7 @@ def main() -> None:
     parser.add_argument('--schema', help='path to xml schema', required=True)
     parser.add_argument('--destination', help='path to directory where codec will be written', required=True)
     parser.add_argument('--generator', help='choose generator (available: cpp, cppng)', default='cpp')
+    parser.add_argument('--package', help='override schema package property')
 
     args = parser.parse_args()
 
@@ -20,7 +21,7 @@ def main() -> None:
         Generator = getattr(module, 'Generator')
         schema = Parser.from_file(args.schema).get_schema()
         generator = Generator(args.destination)
-        generator.generate(schema)
+        generator.generate(schema, package=args.package)
     except Exception as e:
         sys.exit(traceback.format_exc())
         sys.exit(f'error: {e}')

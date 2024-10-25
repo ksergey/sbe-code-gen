@@ -97,7 +97,6 @@ class Generator(GeneratorBase):
         self.env.filters['replace_keyword']  = Generator.filter_replace_keyword
         self.env.filters['format_group_name'] = lambda value: value[0].upper() + value[1:] + 'Group'
         self.env.filters['format_data_name'] = lambda value: value[0].upper() + value[1:] + 'Data'
-
         self.env.filters['format_encoding_class_name'] = lambda value: value[0].upper() + value[1:] + 'Encoding'
 
     @staticmethod

@@ -3,7 +3,7 @@
 {% block content %}
 
 {%- set enum_class_name = type.name | format_class_name -%}
-{%- set underlying_type = type.encoding_type | replace_keyword -%}
+{%- set underlying_type = type.encoding_type.name | replace_keyword -%}
 
 class {{ enum_class_name }} final {
 private:
@@ -12,7 +12,7 @@ private:
 public:
     enum enumerated : {{ underlying_type }} {
 {% for valid_value in type.valid_values %}
-    {% if type.encoding_type == 'char' %}
+    {% if type.encoding_type.name == 'char' %}
         {{ valid_value.name }} = '{{ valid_value.value }}',
     {% else %}
         {{ valid_value.name }} = {{ valid_value.value }},

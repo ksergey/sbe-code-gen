@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
+from typing import Optional
 from app.schema import *
 
 class GeneratorBase(ABC):
@@ -12,12 +13,12 @@ class GeneratorBase(ABC):
     def _generate_impl(self, schema: dict) -> None:
         pass
 
-    def generate(self, schema: Schema) -> None:
+    def generate(self, schema: Schema, package: Optional[str] = None) -> None:
         ir = {}
-        if schema.package != None:
-            ir['package'] = schema.package.split('.')
+        if not package:
+            ir['package'] = schema.package.split('.') if schema.package else None
         else:
-            ir['package'] = None
+            ir['package'] = package.split('.')
         ir['id'] = schema.id
         ir['version'] = schema.version
         ir['byte_order'] = schema.byte_order.value

@@ -218,7 +218,7 @@
     {%- set const_value = type.const_value -%}
 {%- endif %}
 {%- set enum_class_name = type.name | format_class_name -%}
-{%- set underlying_type = type.encoding_type | replace_keyword -%}
+{%- set underlying_type = type.encoding_type.name | replace_keyword -%}
 
 {%- if entry.presence == 'constant' %}
 [[nodiscard]] static constexpr {{ enum_class_name }} {{ method_name | format_method_name_get }}() noexcept {
@@ -269,7 +269,7 @@
     {% set type = entry -%}
 {%- endif %}
 {%- set set_class_name = entry.name | format_class_name -%}
-{%- set underlying_type = type.encoding_type | replace_keyword -%}
+{%- set underlying_type = type.encoding_type.name | replace_keyword -%}
 
 [[nodiscard]] {{ set_class_name }} {{ method_name | format_method_name_get }}() const {
     return {{ set_class_name }}(*std::bit_cast<{{ underlying_type }} const*>(buffer_ + offset_ + {{ entry.offset }}));

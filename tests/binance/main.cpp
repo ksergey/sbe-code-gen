@@ -25,7 +25,7 @@ void view_set(std::string const& prefix, T value) {
   MP_forEach<MP_IndexSeq<MP_Size<typename T::Choices>>>([&](auto I) {
     auto const name = MP_At<typename T::Choices, MP_SizeT<I>>::first_type::value;
     auto const bit = MP_At<typename T::Choices, MP_SizeT<I>>::second_type::value;
-    if (value.test(bit)) {
+    if (value[bit]) {
       if (!first) {
         fmt::print(stdout, ", ");
       }
@@ -49,9 +49,9 @@ void view(std::string prefix, F entry) {
   }
 
   if constexpr (std::derived_from<F, SBEType_Enum>) {
+    using EnumT = typename F::value_type;
     if (entry.present()) {
-      auto value = entry.value();
-      fmt::print(stdout, "{}: {}\n", prefix, value.toCString(value.value()));
+      fmt::print(stdout, "{}: {}\n", prefix, EnumT::to_string(entry.value()));
     } else {
       fmt::print(stdout, "{}: N/A\n", prefix);
     }
@@ -98,6 +98,36 @@ TEST_CASE("schema") {
       messageHeader.field<"blockLength">().value(), messageHeader.field<"version">().value());
 
   view("ExchangeInfoResponse", body);
+}
+
+TEST_CASE("Enum") {
+  OrderType orderType;
+  REQUIRE_EQ(orderType, OrderType::NULL_VALUE);
+  REQUIRE_EQ(OrderType::to_string(orderType), "");
+
+  orderType = OrderType::StopLoss;
+  REQUIRE_EQ(orderType, OrderType::StopLoss);
+  REQUIRE_EQ(OrderType::to_string(orderType), "StopLoss");
+}
+
+TEST_CASE("Set") {
+  static_assert(std::is_same_v<typename OrderTypes::primitive_type, std::uint16_t>);
+
+  OrderTypes orderTypes;
+  REQUIRE_EQ(static_cast<uint16_t>(orderTypes), 0x0);
+
+  orderTypes.set(OrderTypes::Market);
+  REQUIRE_EQ(static_cast<uint16_t>(orderTypes), 0x1);
+  REQUIRE(orderTypes[OrderTypes::Market]);
+  REQUIRE_FALSE(orderTypes[OrderTypes::Limit]);
+
+  orderTypes[OrderTypes::Limit] = true;
+  REQUIRE_EQ(static_cast<uint16_t>(orderTypes), 0x3);
+  REQUIRE(orderTypes[OrderTypes::Market]);
+  REQUIRE(orderTypes[OrderTypes::Limit]);
+
+  orderTypes.reset();
+  REQUIRE_EQ(static_cast<uint16_t>(orderTypes), 0x0);
 }
 
 } // namespace spot_sbe

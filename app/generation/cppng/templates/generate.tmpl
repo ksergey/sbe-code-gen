@@ -24,20 +24,6 @@ SOMETHING_GOES_WRONG
 {{ wrap_const_value_impl(value, type).strip() }}
 {%- endmacro -%}
 
-{% macro field_encoding_type(type) %}
-{% if type.token in ('type', 'set', 'enum') %}
-sbe_code_gen::Encoding<{{ type.name | format_class_name }}>
-{% elif type.token == 'composite' %}
-{{ type.name | format_class_name }}
-{% elif type.token == 'group' %}
-{{ type.name | format_group_name }}
-{% elif type.token == 'data' %}
-{{ type.name | format_data_name }}
-{% else %}
-struct unknown_encoding_token
-{% endif %}
-{% endmacro %}
-
 {% macro field_encoding_impl(field) %}
 {{ (field.reference_name or field.name) | format_encoding_class_name }}
 {% endmacro %}
@@ -148,7 +134,12 @@ public:
 
 {% if is_constant %}
   [[nodiscard]] static constexpr {{ primitive_type }} value() noexcept {
-    return {{ wrap_const_value(type.const_value, type) }};
+    {# return {{ wrap_const_value(type.const_value, type) }}; #}
+    {% if primitive_type == 'char' %}
+    return '{{ type.const_value }}';
+    {% else %}
+    return {{ type.const_value | replace_keyword }};
+    {% endif %}
   }
 
 {% endif %}
@@ -246,7 +237,12 @@ public:
 
 {% if is_constant %}
   [[nodiscard]] static constexpr {{ value_type }} value() noexcept {
-    return {{ wrap_const_value(type.const_value, type) }};
+    {# return {{ wrap_const_value(type.const_value, type) }}; #}
+    {% if primitive_type == 'char' %}
+    return "{{ type.const_value }}";
+    {% else %}
+    return {{ value_type }}(); // something goes wrong
+    {% endif %}
   }
 
 {% endif %}
@@ -372,7 +368,7 @@ public:
 
 {% if is_optional %}
   [[nodiscard]] constexpr bool present() const noexcept {
-    return this->value().value() != {{ value_type }}::NULL_VALUE;
+    return this->value() != {{ value_type }}::NULL_VALUE;
   }
 
 {% endif %}
@@ -390,11 +386,11 @@ public:
 
 {% if is_required or is_optional %}
   [[nodiscard]] constexpr {{ value_type }} value() const noexcept {
-    return {{ value_type }}(*this->data());
+    return {{ value_type }}::enumerated(*this->data());
   }
 
   constexpr void setValue({{ value_type }} value) noexcept {
-    *this->data() = value.rawValue();
+    *this->data() = static_cast<{{ primitive_type }}>(value);
   }
 
 {% endif %}
@@ -467,7 +463,7 @@ public:
   }
 
   constexpr void setValue({{ value_type }} value) noexcept {
-    *this->data() = value.rawValue();
+    *this->data() = static_cast<{{ primitive_type }}>(value);
   }
 
 private:
@@ -628,30 +624,18 @@ public:
     NULL_VALUE = {{ type.null_value | replace_keyword }}
   };
 
-  constexpr {{ class_name }}() noexcept : {{ class_name }}(enumerated::NULL_VALUE) {}
+  constexpr {{ class_name }}(enumerated value = NULL_VALUE) noexcept : value_(value) {}
 
-  constexpr {{ class_name }}(enumerated value) noexcept : value_(value) {}
-
-  explicit constexpr {{ class_name }}({{ primitive_type }} value) noexcept : value_(value) {}
-
-  [[nodiscard]] constexpr {{ primitive_type }} rawValue() const noexcept {
+  [[nodiscard]] constexpr explicit operator {{ primitive_type }}() const noexcept {
     return value_;
   }
 
-  constexpr void setRawValue({{ primitive_type }} value) noexcept {
-    value_ = value;
-  }
-
-  [[nodiscard]] constexpr enumerated value() const noexcept {
+  [[nodiscard]] constexpr operator enumerated() const noexcept {
     return enumerated(value_);
   }
 
-  constexpr void setValue(enumerated value) noexcept {
-    value_ = value;
-  }
-
-  [[nodiscard]] static constexpr char const* toCString({{ class_name }} value) noexcept {
-    switch (value.value()) {
+  [[nodiscard]] static constexpr char const* to_string({{ class_name }} value) noexcept {
+    switch (static_cast<enumerated>(value)) {
 {% for valid_value in type.valid_values %}
     case enumerated::{{ valid_value.name }}:
       return "{{ valid_value.name }}";
@@ -662,17 +646,15 @@ public:
     return "";
   }
 
-  [[nodiscard]] static constexpr std::string_view toStringView({{ class_name }} value) noexcept {
+  [[nodiscard]] static constexpr std::optional<{{class_name}}> from_string(char const* value) noexcept {
     using namespace std::string_view_literals;
-    switch (value.value()) {
 {% for valid_value in type.valid_values %}
-    case enumerated::{{ valid_value.name }}:
-      return "{{ valid_value.name }}"sv;
-{% endfor %}
-    default:
-      break;
+{% if loop.first %}   {% endif %} if ("{{ valid_value.name }}"sv.compare(value) == 0) {
+      return enumerated::{{ valid_value.name }};
+    } else
+{%- endfor %} {
+      return std::nullopt;
     }
-    return ""sv;
   }
 };
 {%- endmacro %}
@@ -689,6 +671,20 @@ class {{ class_name }} {
 private:
   {{ primitive_type }} value_ = 0;
 
+  struct Reference {
+    {{ class_name }}& setRef;
+    {{ primitive_type }} index;
+
+    constexpr Reference& operator=(bool value) noexcept {
+      setRef.set(index, value);
+      return *this;
+    }
+
+    [[nodiscard]] constexpr operator bool() const noexcept {
+      return setRef.test(index);
+    }
+  };
+
 public:
   using primitive_type = {{ primitive_type }};
 
@@ -702,33 +698,31 @@ public:
   static constexpr auto {{ choice.name }} = {{ primitive_type }}(1 << {{ choice.value }});
 {% endfor %}
 
-  constexpr {{ class_name }}() = default;
+  constexpr {{ class_name }}({{ primitive_type }} value = 0) noexcept : value_(value) {}
 
-  constexpr {{ class_name }}({{ primitive_type }} value) noexcept : value_(value) {}
-
-  [[nodiscard]] constexpr {{ primitive_type }} rawValue() const noexcept {
+  [[nodiscard]] constexpr explicit operator {{ primitive_type }}() const noexcept {
     return value_;
   }
 
-  constexpr void setRawValue({{ primitive_type }} value) noexcept {
-    value_ = value;
+  [[nodiscard]] constexpr bool operator[]({{ primitive_type }} choiceBit) const noexcept {
+    return (choiceBit == (choiceBit & value_));
   }
 
-  [[nodiscard]] constexpr bool operator[]({{ primitive_type }} choiceBit) const noexcept {
-    return (choiceBit == (choiceBit & this->rawValue()));
+  [[nodiscard]] constexpr Reference operator[]({{ primitive_type }} choiceBit) noexcept {
+    return Reference{*this, choiceBit};
   }
 
   [[nodiscard]] constexpr bool test({{ primitive_type }} choiceBit) const noexcept {
-    return (choiceBit == (choiceBit & this->rawValue()));
+    return (choiceBit == (choiceBit & value_));
   }
 
   constexpr {{ class_name }}& set({{ primitive_type }} choiceBit, bool value = true) noexcept {
-    this->setRawValue(value ? (this->rawValue() | choiceBit) : (this->rawValue() & ~choiceBit));
+    value_ = value ? (value_ | choiceBit) : (value_ & ~choiceBit);
     return *this;
   }
 
   constexpr {{ class_name }}& reset() noexcept {
-    this->setRawValue(0);
+    value_ = 0;
     return *this;
   }
 
@@ -756,29 +750,32 @@ public:
 {# XXX: define inplace types #}
 {% for contained_type in type.contained_types if contained_type.inplace %}
   {% if contained_type.token == 'enum' %}
-  {{ define_enum(contained_type, schema) | indent(2) -}}
-  {% elif contained_type.token == 'set' %}
-  {{ define_set(contained_type, schema) | indent(2) -}}
-  {% elif contained_type.token == 'composite' %}
-  {{ define_composite(contained_type, schema) | indent(2) -}}
-  {% endif %}
+  {{ define_enum(contained_type, schema) | indent(2) }}
 
+  {% elif contained_type.token == 'set' %}
+  {{ define_set(contained_type, schema) | indent(2) }}
+
+  {% elif contained_type.token == 'composite' %}
+  {{ define_composite(contained_type, schema) | indent(2) }}
+
+  {% endif %}
 {% endfor %}
-{{- '' -}}
 {# XXX: define field encodings #}
 {% for contained_type in type.contained_types %}
   {% if contained_type.token == 'type' %}
-  {{ define_field_encoding_type(contained_type, schema) | indent(2) -}}
-  {% elif contained_type.token == 'enum' %}
-  {{ define_field_encoding_enum(contained_type, schema) | indent(2) -}}
-  {% elif contained_type.token == 'set' %}
-  {{ define_field_encoding_set(contained_type, schema) | indent(2) -}}
-  {% elif contained_type.token == 'composite' %}
-  {{ define_field_encoding_composite(contained_type, schema) | indent(2) -}}
-  {% endif %}
+  {{ define_field_encoding_type(contained_type, schema) | indent(2) }}
 
+  {% elif contained_type.token == 'enum' %}
+  {{ define_field_encoding_enum(contained_type, schema) | indent(2) }}
+
+  {% elif contained_type.token == 'set' %}
+  {{ define_field_encoding_set(contained_type, schema) | indent(2) }}
+
+  {% elif contained_type.token == 'composite' %}
+  {{ define_field_encoding_composite(contained_type, schema) | indent(2) }}
+
+  {% endif %}
 {% endfor %}
-{{- '' -}}
   using Fields = MP_List<
 {% for contained_type in type.contained_types %}
     MP_Pair<MP_Str<"{{ contained_type.reference_name }}">, {{ field_encoding(contained_type) }}>{% if not loop.last %},{% endif +%}
@@ -870,26 +867,31 @@ private:
 public:
 {# XXX: select <group> fields #}
 {% for field in group.fields if field.token == 'group' %}
-  {{ define_group(field, schema) | indent(2) -}}
+  {{ define_group(field, schema) | indent(2) }}
 
 {% endfor %}
 {% for field in group.fields %}
   {% if field.token == 'field' %}
     {% if field.type.token == 'type' %}
-  {{ define_field_encoding_type(field, schema) | indent(2) -}}
+  {{ define_field_encoding_type(field, schema) | indent(2) }}
+
     {% elif field.type.token == 'enum' %}
-  {{ define_field_encoding_enum(field, schema) | indent(2) -}}
+  {{ define_field_encoding_enum(field, schema) | indent(2) }}
+
     {% elif field.type.token == 'set' %}
-  {{ define_field_encoding_set(field, schema) | indent(2) -}}
+  {{ define_field_encoding_set(field, schema) | indent(2) }}
+
     {% elif field.type.token == 'composite' %}
-  {{ define_field_encoding_composite(field, schema) | indent(2) -}}
+  {{ define_field_encoding_composite(field, schema) | indent(2) }}
+
     {% endif %}
   {% elif field.token == 'data' %}
-  {{ define_field_encoding_data(field, schema) | indent(2) -}}
-  {% elif field.token == 'group' %}
-  {{ define_field_encoding_group(field, schema) | indent(2) -}}
-  {% endif %}
+  {{ define_field_encoding_data(field, schema) | indent(2) }}
 
+  {% elif field.token == 'group' %}
+  {{ define_field_encoding_group(field, schema) | indent(2) }}
+
+  {% endif %}
 {% endfor %}
 
   using Fields = MP_List<
@@ -1056,26 +1058,31 @@ private:
 public:
 {# XXX: select <group> fields #}
 {% for field in message.fields if field.token == 'group' %}
-  {{ define_group(field, schema) | indent(2) -}}
+  {{ define_group(field, schema) | indent(2) }}
 
 {% endfor %}
 {% for field in message.fields %}
   {% if field.token == 'field' %}
     {% if field.type.token == 'type' %}
-  {{ define_field_encoding_type(field, schema) | indent(2) -}}
+  {{ define_field_encoding_type(field, schema) | indent(2) }}
+
     {% elif field.type.token == 'enum' %}
-  {{ define_field_encoding_enum(field, schema) | indent(2) -}}
+  {{ define_field_encoding_enum(field, schema) | indent(2) }}
+
     {% elif field.type.token == 'set' %}
-  {{ define_field_encoding_set(field, schema) | indent(2) -}}
+  {{ define_field_encoding_set(field, schema) | indent(2) }}
+
     {% elif field.type.token == 'composite' %}
-  {{ define_field_encoding_composite(field, schema) | indent(2) -}}
+  {{ define_field_encoding_composite(field, schema) | indent(2) }}
+
     {% endif %}
   {% elif field.token == 'data' %}
-  {{ define_field_encoding_data(field, schema) | indent(2) -}}
-  {% elif field.token == 'group' %}
-  {{ define_field_encoding_group(field, schema) | indent(2) -}}
-  {% endif %}
+  {{ define_field_encoding_data(field, schema) | indent(2) }}
 
+  {% elif field.token == 'group' %}
+  {{ define_field_encoding_group(field, schema) | indent(2) }}
+
+  {% endif %}
 {% endfor %}
 
   using Fields = MP_List<

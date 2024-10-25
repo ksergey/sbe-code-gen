@@ -3,7 +3,7 @@
 {% block content %}
 
 {%- set set_class_name = type.name | format_class_name -%}
-{%- set underlying_type = type.encoding_type | replace_keyword -%}
+{%- set underlying_type = type.encoding_type.name | replace_keyword -%}
 
 class {{ set_class_name }} final {
 private:
