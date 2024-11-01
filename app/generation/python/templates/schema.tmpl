@@ -1,0 +1,138 @@
+{% import 'generate.tmpl' as generate %}
+
+{% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+
+import struct
+import sys
+import numpy as np
+
+from abc import ABC, abstractmethod
+from typing import Any, List, Union
+from enum import Enum
+
+class Field(ABC):
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
+    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        raise NotImplementedError
+
+class Message(Field):
+    pass
+
+class EncodingTypeConstant(Field):
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    # how to improve?
+    @property
+    def value(self) -> Any:
+        return self._value
+
+    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        return 0
+
+    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        return 0
+
+class EncodingType0(Field):
+    def __init__(self) -> None:
+        pass
+
+    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        return 0
+
+    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        return 0
+
+class EncodingType1(Field):
+    def __init__(self, format: str, value: Any = None, null_value: Any = None, offset: int = 0, cast = None) -> None:
+        super().__init__()
+        self.struct = struct.Struct(f'{{ byte_order_flag }}{format}')
+        self.value = value
+        self.null_value = null_value
+        self.offset = offset
+        self.cast = cast
+
+    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        self.struct.pack_into(buffer, self.offset + offset, self.value if self.value else self.null_value)
+        return self.struct.size
+
+    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        self.value = self.struct.unpack_from(buffer, self.offset + offset)[0]
+        if self.value == self.null_value:
+            self.value = None
+        if self.cast:
+            self.value = self.cast(self.value)
+        return self.struct.size
+
+    def __repr__(self):
+        return f'<Encoding1({self.strut.format}, {self.value})>'
+
+class EncodingTypeN(Field):
+    def __init__(self, format: str, length: int, value: Any = None, null_value: Any = None, offset: int = 0) -> None:
+        super().__init__()
+        self.struct = struct.Struct(f'{{ byte_order_flag }}{length}{format}')
+        self.length = length
+        self.value = value
+        self.null_value = null_value
+        self.offset = offset
+
+    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        self.struct.pack_into(buffer, self.offset + offset, self.value if self.value else self.null_value)
+        return self.struct.size
+
+    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        self.value = self.struct.unpack_from(buffer, self.offset + offset)[0]
+        if self.value == self.null_value:
+            self.value = None
+        return self.struct.size
+
+    def __repr__(self):
+        return f'<Encoding{self.length}({self.struct.format}, {self.value})>'
+
+{% for type in schema.types if type.token == 'enum' %}
+{{ generate.define_enum(type, schema) }}
+{% endfor %}
+
+{% for type in schema.types if type.token == 'set' %}
+{{ generate.define_set(type, schema) }}
+{% endfor %}
+
+{% for type in schema.types if type.token == 'composite' %}
+{{ generate.define_composite(type, schema) }}
+{% endfor %}
+
+{% for message in schema.messages %}
+{{ generate.define_message(message, schema) }}
+{% endfor %}
+
+class XXX:
+    class YYY:
+        def __init__(self):
+            print('YYY')
+
+    def __init__(self):
+        self.y = YYY()
+        print('XXX')
+
+x = XXX()
+y = XXX.YYY()
+
+buffer = sys.stdin.buffer.read()
+header = MessageHeader()
+header.unpack(buffer, 0)
+
+print(header.as_dict())
+print(header)
+
+header.template_id = 12596
+print(header)
+
+header.template_id = None
+print(header)

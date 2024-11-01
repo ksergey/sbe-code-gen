@@ -241,6 +241,7 @@ public:
     {% if primitive_type == 'char' %}
     return "{{ type.const_value }}";
     {% else %}
+    // TODO: static constexpr std::array<{{ primitive_type }}, {{ type.length }}> data;
     return {{ value_type }}(); // something goes wrong
     {% endif %}
   }
@@ -1038,7 +1039,7 @@ private:
 };
 {%- endmacro %}
 
-{% macro message_definition(message, schema) -%}
+{% macro define_message(message, schema) -%}
 {% set message_class_name = message.name | format_class_name -%}
 {% set header_class_name = schema.header_type.name | format_class_name -%}
 

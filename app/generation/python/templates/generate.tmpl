@@ -1,0 +1,316 @@
+{% macro define_primitive_type_struct_format(type) %}
+{% if type == 'int8' %}
+b
+{% elif type == 'uint8' %}
+B
+{% elif type == 'int16' %}
+h
+{% elif type == 'uint16' %}
+H
+{% elif type == 'int32' %}
+l
+{% elif type == 'uint32' %}
+L
+{% elif type == 'int64' %}
+q
+{% elif type == 'uint64' %}
+Q
+{% elif type == 'float' %}
+f
+{% elif type == 'double' %}
+d
+{% elif type == 'char' %}
+b
+{% endif %}
+{% endmacro %}
+
+{% macro define_field_encoding_type_0(field, schema) %}
+{% set type = field.type if field.token == 'field' else field %}
+EncodingType0()
+{% endmacro %}
+
+{% macro define_field_encoding_type_1(field, schema) %}
+{% set type = field.type if field.token == 'field' else field %}
+{% set is_required = field.presence == 'required' %}
+{% set is_optional = field.presence == 'optional' %}
+{% set is_constant = field.presence == 'constant' %}
+{% set struct_format = define_primitive_type_struct_format(type.primitive_type.name).strip() %}
+
+{% if is_required or is_optional %}
+EncodingType1('{{ struct_format }}', null_value={{ type.null_value | replace_keyword }}, offset={{ field.offset }})
+{% elif is_constant %}
+EncodingTypeConstant({{ type.const_value | replace_keyword }})
+{% endif %}
+{% endmacro %}
+
+{% macro define_field_encoding_type_N(field, schema) %}
+{% set type = field.type if field.token == 'field' else field %}
+{% set is_required = field.presence == 'required' %}
+{% set is_optional = field.presence == 'optional' %}
+{% set is_constant = field.presence == 'constant' %}
+{% set struct_format = define_primitive_type_struct_format(type.primitive_type.name).strip() %}
+{# TODO: EncodingTypeStr? #}
+{% if is_required or is_optional %}
+EncodingTypeN('{{ struct_format }}', length={{ type.length }}, null_value={{ type.null_value | replace_keyword }}, offset={{ field.offset }})
+{% elif is_constant %}
+EncodingTypeConstant({{ type.const_value | replace_keyword }})
+{% endif %}
+{% endmacro %}
+
+{% macro define_field_encoding_type(field, schema) %}
+{% set type = field.type if field.token == 'field' else field -%}
+{% if type.length == 0 %}
+{{ define_field_encoding_type_0(field, schema) }}
+{% elif type.length == 1 %}
+{{ define_field_encoding_type_1(field, schema) }}
+{% elif type.length > 1 %}
+{{ define_field_encoding_type_N(field, schema) }}
+{% endif %}
+{% endmacro %}
+
+{% macro define_field_encoding_enum(field, schema) %}
+{% set type = field.type if field.token == 'field' else field %}
+{% set struct_format = define_primitive_type_struct_format(type.encoding_type.name).strip() %}
+EncodingType1('{{ struct_format }}', null_value={{ type.null_value | replace_keyword }}, offset={{ field.offset }}, cast={{ field.type.name | format_class_name }})
+{% endmacro %}
+
+{% macro define_field_encoding_set(field, schema) %}
+{% set type = field.type if field.token == 'field' else field %}
+{% set struct_format = define_primitive_type_struct_format(type.encoding_type.name).strip() %}
+EncodingType1('{{ struct_format }}', offset={{ field.offset }})
+{% endmacro %}
+
+{% macro define_field_encoding_composite(field, schema) %}
+{% set type = field.type if field.token == 'field' else field -%}
+{{ type.name | format_class_name }}()
+{% endmacro %}
+
+{% macro define_field_encoding_data(field, schema) %}
+{{ field.name | format_data_name }}()
+{% endmacro %}
+
+{% macro define_field_encoding_group(field, schema) %}
+{{ field.name | format_group_name }}()
+{% endmacro %}
+
+{% macro define_enum(type, schema) %}
+{% set enum_class_name = type.name | format_class_name %}
+class {{ enum_class_name }}(Enum):
+{% for valid_value in type.valid_values %}
+    {{ valid_value.name | upper }} = {{ valid_value.value }}
+{% endfor %}
+{% endmacro %}
+
+{% macro define_set(type, schema) %}
+{% set set_class_name = type.name | format_class_name %}
+class {{ set_class_name }}:
+    pass
+{% endmacro %}
+
+{% macro define_composite(type, schema) %}
+{% set composite_class_name = type.name | format_class_name -%}
+{% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+
+class {{ composite_class_name }}(Field):
+{% for contained_type in type.contained_types if contained_type.inplace %}
+    {% if contained_type.token == 'enum' %}
+    {{ define_enum(contained_type, schema) | indent(4) }}
+
+    {% elif contained_type.token == 'set' %}
+    {{ define_set(contained_type, schema) | indent(4) }}
+
+    {% elif contained_type.token == 'composite' %}
+    {{ define_composite(contained_type, schema) | indent(4) }}
+
+    {% endif %}
+{% endfor %}
+
+    FIELDS = [
+{% for contained_type in type.contained_types %}
+        # {{ contained_type }}
+    {% if contained_type.token == 'type' %}
+        {{ define_field_encoding_type(contained_type, schema).strip() }},
+    {% elif contained_type.token == 'enum' %}
+        {{ define_field_encoding_enum(contained_type, schema).strip() }},
+    {% elif contained_type.token == 'set' %}
+        {{ define_field_encoding_set(contained_type, schema).strip() }},
+    {% elif contained_type.token == 'composite' %}
+        {{ define_field_encoding_composite(contained_type, schema).strip() }},
+    {% endif %}
+{% endfor %}
+    ]
+
+    def __init__(self, offset: int = 0) -> None:
+        super().__init__()
+        self.offset = offset
+
+    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        size = (0
+{% for contained_type in type.contained_types %}
+          + self.FIELDS[{{ loop.index0 }}].pack(buffer, self.offset + offset)
+{% endfor %}
+        )
+        assert size == {{ type.encoded_length }}
+        return size
+
+    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        size = (0
+{% for contained_type in type.contained_types %}
+          + self.FIELDS[{{ loop.index0 }}].unpack(buffer, self.offset + offset)
+{% endfor %}
+        )
+        assert size == {{ type.encoded_length }}
+        return size
+
+{% for contained_type in type.contained_types %}
+    {% set method_name = contained_type.reference_name | format_method_name %}
+    @property
+    def {{ method_name }}(self):
+    {% if contained_type.token in ('type', 'enum', 'set') %}
+        return self.FIELDS[{{ loop.index0 }}].value
+    {% else %}
+        pass
+    {% endif %}
+
+    {% if contained_type.presence != 'constant' %}
+    @{{method_name }}.setter
+    def {{ method_name }}(self, value):
+        {% if contained_type.presence == 'required' %}
+        assert value != None, 'value can\'t be None'
+        {% else %}
+        if not value:
+            value = self.FIELDS[{{ loop.index0 }}].null_value
+        {% endif %}
+        self.FIELDS[{{ loop.index0 }}].value = value
+
+    {% endif %}
+{% endfor %}
+
+    def as_dict(self) -> dict:
+        result = {}
+{% for contained_type in type.contained_types %}
+    {% if contained_type.token in ('type', 'enum', 'set') %}
+        result['{{ contained_type.reference_name | format_method_name }}'] = self.{{ contained_type.reference_name | format_method_name }}
+    {% else %}
+        result['{{ contained_type.reference_name | format_method_name }}'] = self.{{ contained_type.reference_name | format_method_name }}.as_dict()
+    {% endif %}
+{% endfor %}
+        return result
+
+    def __repr__(self):
+        return f'<{{ composite_class_name }}({self.as_dict()})>'
+{% endmacro %}
+
+{% macro define_data(data, schema) %}
+{% set class_name = data.name | format_data_name -%}
+class {{ class_name }}(Field):
+    pass
+{% endmacro %}
+
+{% macro define_group(group, schema) %}
+{% set group_class_name = group.name | format_group_name -%}
+{% set dimensions_type_class_name = group.dimension_type.name | format_class_name -%}
+{% set num_in_group_type = (group.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+
+class {{ group_class_name }}(Field):
+    BLOCK_LENGTH = {{ group.block_length }}
+
+{% for field in group.fields if field.token == 'group' %}
+    {{ define_group(field, schema) | indent(4) }}
+
+{% endfor %}
+{% for field in group.fields if field.token == 'data' %}
+    {{ define_data(field, schema) | indent(4) }}
+
+{% endfor %}
+
+    FIELDS = [
+{% for field in group.fields %}
+    {% if field.token == 'field' %}
+        {% if field.type.token == 'type' %}
+        {{ define_field_encoding_type(field, schema).strip() }},
+        {% elif field.type.token == 'enum' %}
+        {{ define_field_encoding_enum(field, schema).strip() }},
+        {% elif field.type.token == 'set' %}
+        {{ define_field_encoding_set(field, schema).strip() }},
+        {% elif field.type.token == 'composite' %}
+        {{ define_field_encoding_composite(field, schema).strip() }},
+        {% endif %}
+    {% elif field.token == 'data' %}
+        {{ define_field_encoding_data(field, schema).strip() }},
+    {% elif field.token == 'group' %}
+        {{ define_field_encoding_group(field, schema).strip() }},
+    {% endif %}
+{% endfor %}
+    ]
+
+    def __init__(self):
+        pass
+
+    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        raise NotImplementedError
+
+    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        raise NotImplementedError
+{% endmacro %}
+
+{% macro define_message(message, schema) %}
+{% set message_class_name = message.name | format_class_name -%}
+{% set header_class_name = schema.header_type.name | format_class_name -%}
+
+class {{ message_class_name }}(Message):
+    SCHEMA_ID = {{ schema.id }}
+    SCHEMA_VERSION = {{ schema.version }}
+    BLOCK_LENGTH = {{ message.block_length }}
+    TEMPLATE_ID = {{ message.id }}
+
+{% for field in message.fields if field.token == 'group' %}
+    {{ define_group(field, schema) | indent(4) }}
+
+{% endfor %}
+{% for field in message.fields if field.token == 'data' %}
+    {{ define_data(field, schema) | indent(4) }}
+
+{% endfor %}
+
+    FIELDS = [
+{% for field in message.fields %}
+    {% if field.token == 'field' %}
+        {% if field.type.token == 'type' %}
+        {{ define_field_encoding_type(field, schema).strip() }},
+        {% elif field.type.token == 'enum' %}
+        {{ define_field_encoding_enum(field, schema).strip() }},
+        {% elif field.type.token == 'set' %}
+        {{ define_field_encoding_set(field, schema).strip() }},
+        {% elif field.type.token == 'composite' %}
+        {{ define_field_encoding_composite(field, schema).strip() }},
+        {% endif %}
+    {% elif field.token == 'data' %}
+        {{ define_field_encoding_data(field, schema).strip() }},
+    {% elif field.token == 'group' %}
+        {{ define_field_encoding_group(field, schema).strip() }},
+    {% endif %}
+{% endfor %}
+    ]
+
+    def __init__(self):
+        pass
+
+    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+{% for field in message.fields if field.token == 'field' %}
+        self.FIELDS[{{ loop.index0 }}].pack(buffer, offset)
+{% endfor %}
+        size = {{ message.block_length }}
+{% for field in message.fields %}
+    {% if field.token in ('group', 'data') %}
+        size += self.FIELDS[{{ loop.index0 }}].pack(buffer, offset + size)
+    {% endif %}
+{% endfor %}
+        return size
+
+    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+        # TODO: acting block length?
+        #       acting version?
+        return 0
+
+{% endmacro %}
