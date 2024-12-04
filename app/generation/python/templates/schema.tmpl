@@ -1,138 +1,102 @@
 {% import 'generate.tmpl' as generate %}
 
-{% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
-
 import struct
 import sys
-import numpy as np
 
+from enum import Enum, Flag
 from abc import ABC, abstractmethod
-from typing import Any, List, Union
-from enum import Enum
+from typing import Any, Union, List, Optional
 
-class Field(ABC):
-    def __init__(self):
-        pass
+# Codec encode/decode context
+class CodecContext:
+    def __init__(self, buffer: Union[bytes, bytearray, memoryview], offset: int = 0) -> None:
+        self.buffer = buffer
+        self.offset = offset
 
+class Codec(ABC):
     @abstractmethod
-    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+    def pack(self, ctx: CodecContext, value: Any) -> None:
         raise NotImplementedError
 
     @abstractmethod
-    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
+    def unpack(self, ctx: CodecContext) -> Any:
         raise NotImplementedError
 
-class Message(Field):
-    pass
-
-class EncodingTypeConstant(Field):
-    def __init__(self, value: Any) -> None:
-        self._value = value
-
-    # how to improve?
-    @property
-    def value(self) -> Any:
-        return self._value
-
-    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        return 0
-
-    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        return 0
-
-class EncodingType0(Field):
-    def __init__(self) -> None:
-        pass
-
-    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        return 0
-
-    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        return 0
-
-class EncodingType1(Field):
-    def __init__(self, format: str, value: Any = None, null_value: Any = None, offset: int = 0, cast = None) -> None:
-        super().__init__()
-        self.struct = struct.Struct(f'{{ byte_order_flag }}{format}')
-        self.value = value
-        self.null_value = null_value
-        self.offset = offset
-        self.cast = cast
-
-    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        self.struct.pack_into(buffer, self.offset + offset, self.value if self.value else self.null_value)
-        return self.struct.size
-
-    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        self.value = self.struct.unpack_from(buffer, self.offset + offset)[0]
-        if self.value == self.null_value:
-            self.value = None
-        if self.cast:
-            self.value = self.cast(self.value)
-        return self.struct.size
-
-    def __repr__(self):
-        return f'<Encoding1({self.strut.format}, {self.value})>'
-
-class EncodingTypeN(Field):
-    def __init__(self, format: str, length: int, value: Any = None, null_value: Any = None, offset: int = 0) -> None:
-        super().__init__()
-        self.struct = struct.Struct(f'{{ byte_order_flag }}{length}{format}')
-        self.length = length
-        self.value = value
-        self.null_value = null_value
-        self.offset = offset
-
-    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        self.struct.pack_into(buffer, self.offset + offset, self.value if self.value else self.null_value)
-        return self.struct.size
-
-    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        self.value = self.struct.unpack_from(buffer, self.offset + offset)[0]
-        if self.value == self.null_value:
-            self.value = None
-        return self.struct.size
-
-    def __repr__(self):
-        return f'<Encoding{self.length}({self.struct.format}, {self.value})>'
-
-{% for type in schema.types if type.token == 'enum' %}
-{{ generate.define_enum(type, schema) }}
-{% endfor %}
-
-{% for type in schema.types if type.token == 'set' %}
-{{ generate.define_set(type, schema) }}
-{% endfor %}
-
-{% for type in schema.types if type.token == 'composite' %}
+{% for type in schema.types %}
+  {% if type.token == 'composite' and type.name == 'messageHeader' %}
 {{ generate.define_composite(type, schema) }}
+  {% elif type.token == 'enum' %}
+{{ generate.define_enum(type, schema) }}
+  {% elif type.token == 'set' %}
+{{ generate.define_set(type, schema) }}
+  {% endif %}
 {% endfor %}
 
 {% for message in schema.messages %}
 {{ generate.define_message(message, schema) }}
 {% endfor %}
 
-class XXX:
-    class YYY:
-        def __init__(self):
-            print('YYY')
+buffer = bytearray(10)
+ctx = CodecContext(buffer)
+print(buffer)
 
-    def __init__(self):
-        self.y = YYY()
-        print('XXX')
+# ctx.offset = 0
+# codec = MDInstrumentDefinitionSpread56Message.DisplayFactorField()
+# codec.pack(ctx, { 'mantissa': 100 })
+# print(buffer)
+#
+# print(codec.unpack(ctx))
 
-x = XXX()
-y = XXX.YYY()
+ctx.offset = 2
+MessageHeader.pack(ctx, {
+    'blockLength': 20,
+    'templateId': 13,
+    'schemaId': 20,
+    'version': 0
+})
+print(buffer)
+print(MessageHeader.unpack(ctx))
 
-buffer = sys.stdin.buffer.read()
-header = MessageHeader()
-header.unpack(buffer, 0)
+ctx.offset = 0
+UserDataStreamStartResponseMessage.pack(ctx, {
+    'listenKey': 'key12345'
+})
+print(buffer)
 
-print(header.as_dict())
-print(header)
+ctx.offset = 0
+print(UserDataStreamStartResponseMessage.unpack(ctx))
 
-header.template_id = 12596
-print(header)
+buffer = bytearray(120)
+ctx = CodecContext(buffer)
 
-header.template_id = None
-print(header)
+AccountCommissionResponseMessage.pack(ctx, {
+    'commissionExponent': 50,
+    'discountExponent': 55,
+    'standardCommissionMaker': 10000,
+    'standardCommissionTaker': 10001,
+    'standardCommissionBuyer': 10002,
+    'standardCommissionSeller': 10003,
+    'taxCommissionMaker': 10004,
+    'taxCommissionTaker': 10005,
+    'taxCommissionBuyer': 10006,
+    'taxCommissionSeller': 10007,
+    'discountEnabledForAccount': BoolEnum.TRUE,
+    'discountEnabledForSymbol': BoolEnum.FALSE,
+    'discount': 30000,
+    'symbol': 'SUPER-MEGA-GIPER-SYMBOL',
+    'discountAsset': '123'
+})
+
+ctx.offset = 0
+print(AccountCommissionResponseMessage.unpack(ctx))
+
+ctx.offset = 0
+CancelOpenOrdersResponseMessage.pack(ctx, {
+    'responses': [
+        { 'response': [32, 32, 32] },
+        { 'response': [64, 64, 64] },
+        { 'response': [32, 48, 64] }
+    ]
+})
+ctx.offset = 0
+print(CancelOpenOrdersResponseMessage.unpack(ctx))

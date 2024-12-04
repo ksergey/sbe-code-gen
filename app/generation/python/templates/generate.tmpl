@@ -1,316 +1,533 @@
-{% macro define_primitive_type_struct_format(type) %}
-{% if type == 'int8' %}
-b
-{% elif type == 'uint8' %}
-B
-{% elif type == 'int16' %}
-h
-{% elif type == 'uint16' %}
-H
-{% elif type == 'int32' %}
-l
-{% elif type == 'uint32' %}
-L
-{% elif type == 'int64' %}
-q
-{% elif type == 'uint64' %}
-Q
-{% elif type == 'float' %}
-f
-{% elif type == 'double' %}
-d
-{% elif type == 'char' %}
-b
-{% endif %}
-{% endmacro %}
-
-{% macro define_field_encoding_type_0(field, schema) %}
-{% set type = field.type if field.token == 'field' else field %}
-EncodingType0()
-{% endmacro %}
-
-{% macro define_field_encoding_type_1(field, schema) %}
-{% set type = field.type if field.token == 'field' else field %}
-{% set is_required = field.presence == 'required' %}
-{% set is_optional = field.presence == 'optional' %}
-{% set is_constant = field.presence == 'constant' %}
-{% set struct_format = define_primitive_type_struct_format(type.primitive_type.name).strip() %}
-
-{% if is_required or is_optional %}
-EncodingType1('{{ struct_format }}', null_value={{ type.null_value | replace_keyword }}, offset={{ field.offset }})
-{% elif is_constant %}
-EncodingTypeConstant({{ type.const_value | replace_keyword }})
-{% endif %}
-{% endmacro %}
-
-{% macro define_field_encoding_type_N(field, schema) %}
-{% set type = field.type if field.token == 'field' else field %}
-{% set is_required = field.presence == 'required' %}
-{% set is_optional = field.presence == 'optional' %}
-{% set is_constant = field.presence == 'constant' %}
-{% set struct_format = define_primitive_type_struct_format(type.primitive_type.name).strip() %}
-{# TODO: EncodingTypeStr? #}
-{% if is_required or is_optional %}
-EncodingTypeN('{{ struct_format }}', length={{ type.length }}, null_value={{ type.null_value | replace_keyword }}, offset={{ field.offset }})
-{% elif is_constant %}
-EncodingTypeConstant({{ type.const_value | replace_keyword }})
-{% endif %}
-{% endmacro %}
-
-{% macro define_field_encoding_type(field, schema) %}
-{% set type = field.type if field.token == 'field' else field -%}
-{% if type.length == 0 %}
-{{ define_field_encoding_type_0(field, schema) }}
-{% elif type.length == 1 %}
-{{ define_field_encoding_type_1(field, schema) }}
-{% elif type.length > 1 %}
-{{ define_field_encoding_type_N(field, schema) }}
-{% endif %}
-{% endmacro %}
-
-{% macro define_field_encoding_enum(field, schema) %}
-{% set type = field.type if field.token == 'field' else field %}
-{% set struct_format = define_primitive_type_struct_format(type.encoding_type.name).strip() %}
-EncodingType1('{{ struct_format }}', null_value={{ type.null_value | replace_keyword }}, offset={{ field.offset }}, cast={{ field.type.name | format_class_name }})
-{% endmacro %}
-
-{% macro define_field_encoding_set(field, schema) %}
-{% set type = field.type if field.token == 'field' else field %}
-{% set struct_format = define_primitive_type_struct_format(type.encoding_type.name).strip() %}
-EncodingType1('{{ struct_format }}', offset={{ field.offset }})
-{% endmacro %}
-
-{% macro define_field_encoding_composite(field, schema) %}
-{% set type = field.type if field.token == 'field' else field -%}
-{{ type.name | format_class_name }}()
-{% endmacro %}
-
-{% macro define_field_encoding_data(field, schema) %}
-{{ field.name | format_data_name }}()
-{% endmacro %}
-
-{% macro define_field_encoding_group(field, schema) %}
-{{ field.name | format_group_name }}()
-{% endmacro %}
-
 {% macro define_enum(type, schema) %}
 {% set enum_class_name = type.name | format_class_name %}
 class {{ enum_class_name }}(Enum):
 {% for valid_value in type.valid_values %}
+    {% if type.encoding_type.name == 'char' %}
+    {{ valid_value.name | upper }} = '{{ valid_value.value }}'
+    {% else %}
     {{ valid_value.name | upper }} = {{ valid_value.value }}
+    {% endif %}
 {% endfor %}
 {% endmacro %}
 
 {% macro define_set(type, schema) %}
 {% set set_class_name = type.name | format_class_name %}
-class {{ set_class_name }}:
-    pass
+class {{ set_class_name }}(Flag):
+{% for choice in type.choices %}
+    {{ choice.name | upper }} = {{ choice.value | bit_to_value}}
+{% endfor %}
 {% endmacro %}
 
-{% macro define_composite(type, schema) %}
-{% set composite_class_name = type.name | format_class_name -%}
-{% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+{% macro make_encoding__suffix(field) -%}
+  {% if field.reference_name  %}
+{{- field.reference_name -}}
+  {% else %}
+{{- field.name -}}
+  {% endif %}
+{%- endmacro %}
 
-class {{ composite_class_name }}(Field):
-{% for contained_type in type.contained_types if contained_type.inplace %}
-    {% if contained_type.token == 'enum' %}
-    {{ define_enum(contained_type, schema) | indent(4) }}
-
-    {% elif contained_type.token == 'set' %}
-    {{ define_set(contained_type, schema) | indent(4) }}
-
-    {% elif contained_type.token == 'composite' %}
-    {{ define_composite(contained_type, schema) | indent(4) }}
-
-    {% endif %}
-{% endfor %}
-
-    FIELDS = [
-{% for contained_type in type.contained_types %}
-        # {{ contained_type }}
-    {% if contained_type.token == 'type' %}
-        {{ define_field_encoding_type(contained_type, schema).strip() }},
-    {% elif contained_type.token == 'enum' %}
-        {{ define_field_encoding_enum(contained_type, schema).strip() }},
-    {% elif contained_type.token == 'set' %}
-        {{ define_field_encoding_set(contained_type, schema).strip() }},
-    {% elif contained_type.token == 'composite' %}
-        {{ define_field_encoding_composite(contained_type, schema).strip() }},
-    {% endif %}
-{% endfor %}
-    ]
-
-    def __init__(self, offset: int = 0) -> None:
-        super().__init__()
-        self.offset = offset
-
-    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        size = (0
-{% for contained_type in type.contained_types %}
-          + self.FIELDS[{{ loop.index0 }}].pack(buffer, self.offset + offset)
-{% endfor %}
-        )
-        assert size == {{ type.encoded_length }}
-        return size
-
-    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        size = (0
-{% for contained_type in type.contained_types %}
-          + self.FIELDS[{{ loop.index0 }}].unpack(buffer, self.offset + offset)
-{% endfor %}
-        )
-        assert size == {{ type.encoded_length }}
-        return size
-
-{% for contained_type in type.contained_types %}
-    {% set method_name = contained_type.reference_name | format_method_name %}
-    @property
-    def {{ method_name }}(self):
-    {% if contained_type.token in ('type', 'enum', 'set') %}
-        return self.FIELDS[{{ loop.index0 }}].value
+{% macro define_type_encoding_type__pack(field, schema) %}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set primitive_type = type.primitive_type -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+  {% set is_string = primitive_type == 'char' -%}
+  {% set is_optional = field.presence == 'optional' -%}
+def pack_{{ make_encoding__suffix(field) }}(v):
+  {% if field.presence == 'required' and type.length == 1 %}
+    struct.pack_into('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}, v)
+  {% endif %}
+  {% if field.presence == 'optional' and type.length == 1 %}
+    struct.pack_into('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}, v if v else {{ type.null_value | replace_keyword }})
+  {% endif %}
+  {% if field.presence == 'required' and type.length > 1 %}
+    {% if is_string %}
+    raw_value = v.encode('utf-8')
+    assert len(raw_value) <= {{ type.length }}, 'argument length mismatch'
+    if len(raw_value) < {{ type.length }}:
+        raw_value += b'\{{ type.null_value | replace_keyword }}' * ({{ type.length }} - len(raw_value))
+    struct.pack_into('{{ type.length }}s', ctx.buffer, ctx.offset + {{ field.offset }}, raw_value)
     {% else %}
-        pass
+    assert len(v) == {{ type.length }}, 'argument length mismatch'
+    struct.pack_into('{{ byte_order_flag }}{{ type.length }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}, *v)
     {% endif %}
-
-    {% if contained_type.presence != 'constant' %}
-    @{{method_name }}.setter
-    def {{ method_name }}(self, value):
-        {% if contained_type.presence == 'required' %}
-        assert value != None, 'value can\'t be None'
-        {% else %}
-        if not value:
-            value = self.FIELDS[{{ loop.index0 }}].null_value
-        {% endif %}
-        self.FIELDS[{{ loop.index0 }}].value = value
-
-    {% endif %}
-{% endfor %}
-
-    def as_dict(self) -> dict:
-        result = {}
-{% for contained_type in type.contained_types %}
-    {% if contained_type.token in ('type', 'enum', 'set') %}
-        result['{{ contained_type.reference_name | format_method_name }}'] = self.{{ contained_type.reference_name | format_method_name }}
+  {% endif %}
+  {% if field.presence == 'optional' and type.length > 1 %}
+    {% if is_string %}
+    if v:
+        raw_value = v.encode('utf-8')
+        assert len(raw_value) <= {{ type.length }}, 'argument length mismatch'
+    else:
+        raw_value = b''
+    if len(raw_value) < {{ type.length }}:
+        raw_value += b'\{{ type.null_value | replace_keyword }}' * ({{ type.length }} - len(raw_value))
+    struct.pack_into('{{ type.length }}s', ctx.buffer, ctx.offset + {{ field.offset }}, raw_value)
     {% else %}
-        result['{{ contained_type.reference_name | format_method_name }}'] = self.{{ contained_type.reference_name | format_method_name }}.as_dict()
+    if v:
+        assert len(v) == {{ type.length }}, 'argument length mismatch'
+        struct.pack_into('{{ byte_order_flag }}{{ type.length }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}, *v)
+    else:
+        struct.pack_into('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}, {{ type.null_value | replace_keyword }})
     {% endif %}
-{% endfor %}
-        return result
-
-    def __repr__(self):
-        return f'<{{ composite_class_name }}({self.as_dict()})>'
+  {% endif %}
+  {% if field.presence == 'constant' %}
+    assert not v or v == {{ type.const_value | replace_keyword }}
+  {% endif %}
 {% endmacro %}
 
-{% macro define_data(data, schema) %}
-{% set class_name = data.name | format_data_name -%}
-class {{ class_name }}(Field):
-    pass
+{% macro define_type_encoding_type__unpack(field, schema) %}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set primitive_type = type.primitive_type -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+  {% set is_string = primitive_type == 'char' -%}
+  {% set is_optional = field.presence == 'optional' -%}
+
+def unpack_{{ make_encoding__suffix(field) }}():
+  {% if field.presence == 'required' and type.length == 1 %}
+    return struct.unpack_from('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})[0]
+  {% endif %}
+  {% if field.presence == 'optional' and type.length == 1 %}
+    raw_value = struct.unpack_from('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})
+    if raw_value == {{ type.null_value | replace_keyword }}:
+        return None
+    return raw_value
+  {% endif %}
+  {% if field.presence == 'required' and type.length > 1 %}
+    {% if is_string %}
+    raw_value = struct.unpack_from('{{ type.length }}s', ctx.buffer, ctx.offset + {{ field.offset }})[0]
+    return raw_value.decode('utf-8').rstrip(chr({{ type.null_value | replace_keyword }}))
+    {% else %}
+    return list(struct.unpack_from('{{ byte_order_flag }}{{ type.length }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})
+    {% endif %}
+  {% endif %}
+  {% if field.presence == 'optional' and type.length > 1 %}
+    {% if is_string %}
+    raw_value = struct.unpack_from('{{ type.length }}s', ctx.buffer, ctx.offset + {{ field.offset }})[0]
+    if raw_value[0] == {{ type.null_value }}:
+        return None
+    return raw_value.decode('utf-8').rstrip(chr({{ type.null_value | replace_keyword }}))
+    {% else %}
+    raw_value = struct.unpack_from('{{ byte_order_flag }}{{ type.length }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})
+    if raw_value[0] == {{ type.null_value | replace_keyword }}:
+        return None
+    return list(raw_value)
+    {% endif %}
+  {% endif %}
+  {% if field.presence == 'constant' %}
+    return {{ type.const_value }}
+  {% endif %}
 {% endmacro %}
 
-{% macro define_group(group, schema) %}
-{% set group_class_name = group.name | format_group_name -%}
-{% set dimensions_type_class_name = group.dimension_type.name | format_class_name -%}
-{% set num_in_group_type = (group.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+{% macro define_type_encoding_enum__pack(field, schema) %}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set primitive_type = type.encoding_type -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
 
-class {{ group_class_name }}(Field):
-    BLOCK_LENGTH = {{ group.block_length }}
+def pack_{{ make_encoding__suffix(field) }}(v):
+  {% if field.presence == 'required' %}
+    assert isinstance(v, Enum)
+    struct.pack_into('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}, v.value)
+  {% endif %}
+  {% if field.presence == 'optional' %}
+    assert not v or isinstance(v, Enum)
+    struct.pack_into('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}, v.value if v else {{ type.null_value | replace_keyword }})
+  {% endif %}
+  {% if field.presence == 'constant' %}
+    # TODO
+    assert not v or isinstance(v, Enum)
+  {% endif %}
+{% endmacro %}
 
-{% for field in group.fields if field.token == 'group' %}
-    {{ define_group(field, schema) | indent(4) }}
+{% macro define_type_encoding_enum__unpack(field, schema) %}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set primitive_type = type.encoding_type -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
 
-{% endfor %}
-{% for field in group.fields if field.token == 'data' %}
-    {{ define_data(field, schema) | indent(4) }}
+def unpack_{{ make_encoding__suffix(field) }}():
+  {% if field.presence == 'required' %}
+    return {{ type.name | format_class_name }}(struct.unpack_from('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})[0])
+  {% endif %}
+  {% if field.presence == 'optional' %}
+    raw_value = struct.unpack_from('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})[0]
+    if raw_value == {{ type.null_value | replace_keyword }}:
+        return None
+    return {{ type.name | format_class_name}}(raw_value)
+  {% endif %}
+  {% if field.presence == 'constant' %}
+    return {{ field.value_ref }} # TODO?
+  {% endif %}
+{% endmacro %}
 
-{% endfor %}
+{% macro define_type_encoding_set__pack(field, schema) %}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set primitive_type = type.encoding_type -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
 
-    FIELDS = [
-{% for field in group.fields %}
-    {% if field.token == 'field' %}
-        {% if field.type.token == 'type' %}
-        {{ define_field_encoding_type(field, schema).strip() }},
-        {% elif field.type.token == 'enum' %}
-        {{ define_field_encoding_enum(field, schema).strip() }},
-        {% elif field.type.token == 'set' %}
-        {{ define_field_encoding_set(field, schema).strip() }},
-        {% elif field.type.token == 'composite' %}
-        {{ define_field_encoding_composite(field, schema).strip() }},
-        {% endif %}
-    {% elif field.token == 'data' %}
-        {{ define_field_encoding_data(field, schema).strip() }},
-    {% elif field.token == 'group' %}
-        {{ define_field_encoding_group(field, schema).strip() }},
+def pack_{{ make_encoding__suffix(field) }}(v):
+  {% if field.presence == 'required' %}
+    assert isinstance(v, Flag)
+    struct.pack_into('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}, v.value)
+  {% endif %}
+{% endmacro %}
+
+{% macro define_type_encoding_set__unpack(field, schema) %}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set primitive_type = type.encoding_type -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+
+def unpack_{{ make_encoding__suffix(field) }}():
+  {% if field.presence == 'required' %}
+    return {{ type.name | format_class_name }}(struct.unpack_from('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})[0])
+  {% endif %}
+{% endmacro %}
+
+{% macro define_type_encoding_composite__pack(field, schema) %}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set is_optional = field.presence == 'optional' -%}
+
+def pack_{{ make_encoding__suffix(field) }}(v):
+  {% for field in type.contained_types %}
+    {{ define_type_encoding__pack(field, schema) | indent(4) -}}
+  {% endfor %}
+
+  {% if is_optional %}
+    if not v:
+        pack_{{ make_encoding__suffix(type.contained_types[0]) }}(None)
+        return
+  {% endif %}
+  {% for field in type.contained_types %}
+    {% if field.presence in ('optional', 'constant') %}
+        pack_{{ make_encoding__suffix(field) }}(value.get('{{ field.reference_name }}', None))
+    {% elif field.presence == 'required' %}
+        pack_{{ make_encoding__suffix(field) }}(value.get('{{ field.reference_name }}'))
     {% endif %}
-{% endfor %}
-    ]
+  {% endfor %}
+{% endmacro %}
 
-    def __init__(self):
-        pass
+{% macro define_type_encoding_composite__unpack(field, schema) %}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set is_optional = field.presence == 'optional' -%}
 
-    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        raise NotImplementedError
+def unpack_{{ make_encoding__suffix(field) }}():
+  {% for field in type.contained_types %}
+    {{ define_type_encoding__unpack(field, schema) | indent(4) -}}
+  {% endfor %}
 
-    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        raise NotImplementedError
+    value0 = unpack_{{ make_encoding__suffix(type.contained_types[0]) }}()
+  {% if is_optional %}
+    if not value0:
+        return None
+  {% endif %}
+    return {
+        '{{ type.contained_types[0].reference_name }}': value0,
+  {% for field in type.contained_types %}
+    {% if loop.index0 != 0 %}
+        '{{ field.reference_name }}': unpack_{{ make_encoding__suffix(field) }}(),
+    {% endif %}
+  {% endfor %}
+{% endmacro %}
+
+{% macro define_type_encoding__pack(type, schema) %}
+  {% if type.token == 'type' %}
+{{ define_type_encoding_type__pack(type, schema) -}}
+  {% elif type.token == 'enum' %}
+{{ define_type_encoding_enum__pack(type, schema) -}}
+  {% elif type.token == 'set' %}
+{{ define_type_encoding_set__pack(type, schema) -}}
+  {% elif type.token == 'composite' %}
+{{ define_type_encoding_composite__pack(type, schema) -}}
+  {% else %}
+assert False, 'unknown type token ({{ type.token }})'
+  {% endif %}
+{% endmacro %}
+
+{% macro define_type_encoding__unpack(type, schema) %}
+  {% if type.token == 'type' %}
+{{ define_type_encoding_type__unpack(type, schema) -}}
+  {% elif type.token == 'enum' %}
+{{ define_type_encoding_enum__unpack(type, schema) -}}
+  {% elif type.token == 'set' %}
+{{ define_type_encoding_set__unpack(type, schema) -}}
+  {% elif type.token == 'composite' %}
+{{ define_type_encoding_composite__unpack(type, schema) -}}
+  {% else %}
+assert False, 'unknown type token ({{ type.token }})'
+  {% endif %}
+{% endmacro %}
+
+{% macro define_field_encoding__pack(field, schema) %}
+  {% set type = field.type -%}
+  {% if type.token == 'type' %}
+{{ define_type_encoding_type__pack(field, schema) -}}
+  {% elif type.token == 'enum' %}
+{{ define_type_encoding_enum__pack(field, schema) -}}
+  {% elif type.token == 'set' %}
+{{ define_type_encoding_set__pack(field, schema) -}}
+  {% elif type.token == 'composite' %}
+{{ define_type_encoding_composite__pack(field, schema) -}}
+  {% else %}
+assert False, 'unknown field type token ({{ type.token }})'
+  {% endif %}
+{% endmacro %}
+
+{% macro define_field_encoding__unpack(field, schema) %}
+  {% set type = field.type -%}
+  {% if type.token == 'type' %}
+{{ define_type_encoding_type__unpack(field, schema) -}}
+  {% elif type.token == 'enum' %}
+{{ define_type_encoding_enum__unpack(field, schema) -}}
+  {% elif type.token == 'set' %}
+{{ define_type_encoding_set__unpack(field, schema) -}}
+  {% elif type.token == 'composite' %}
+{{ define_type_encoding_composite__unpack(field, schema) -}}
+  {% else %}
+assert False, 'unknown field type token ({{ type.token }})'
+  {% endif %}
+{% endmacro %}
+
+{% macro define_data_encoding__pack(field, schema) %}
+  {% set length = (field.type.contained_types | selectattr('name', 'equalto', 'length') | first) -%}
+  {% set var_data = (field.type.contained_types | selectattr('name', 'equalto', 'varData') | first) -%}
+  {% set primitive_type = 'char' if var_data.character_encoding and var_data.primitive_type.size == 1 else var_data.primitive_type.name | replace_keyword -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+
+def pack_{{ make_encoding__suffix(field) }}(v):
+  {% if primitive_type == 'char' %}
+    length_codec = struct.Struct('{{ byte_order_flag }}{{ length.primitive_type.name | struct_fmt }}')
+    raw_value = v.encode('{{ var_data.character_encoding }}')
+    length_codec.pack_into(ctx.buffer, ctx.offset, len(raw_value))
+    ctx.offset += length_codec.size
+    data_codec = struct.Struct(f'{len(raw_value)}s')
+    data_codec.pack_into(ctx.buffer, ctx.offset, raw_value)
+    ctx.offset += data_codec.size
+  {% else %}
+    length_codec = struct.Struct('{{ byte_order_flag }}{{ length.primitive_type.name | struct_fmt }}')
+    length_codec.pack_into(ctx.buffer, ctx.offset, len(v))
+    ctx.offset += length_codec.size
+    data_codec = struct.Struct(f'{len(v)}{{ var_data.primitive_type.name | struct_fmt }}')
+    data_codec.pack_into(ctx.buffer, ctx.offset, *v)
+    ctx.offset += data_codec.size
+  {% endif %}
+{% endmacro %}
+
+{% macro define_data_encoding__unpack(field, schema) %}
+  {% set length = (field.type.contained_types | selectattr('name', 'equalto', 'length') | first) -%}
+  {% set var_data = (field.type.contained_types | selectattr('name', 'equalto', 'varData') | first) -%}
+  {% set primitive_type = 'char' if var_data.character_encoding and var_data.primitive_type.size == 1 else var_data.primitive_type.name | replace_keyword -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+
+def unpack_{{ make_encoding__suffix(field) }}():
+  {% if primitive_type == 'char' %}
+    length_codec = struct.Struct('{{ byte_order_flag }}{{ length.primitive_type.name | struct_fmt }}')
+    length = length_codec.unpack_from(ctx.buffer, ctx.offset)[0]
+    ctx.offset += length_codec.size
+    data_codec = struct.Struct(f'{length}s')
+    data = data_codec.unpack_from(ctx.buffer, ctx.offset)[0]
+    ctx.offset += data_codec.size
+    return data.decode('{{ var_data.character_encoding }}')
+  {% else %}
+    length_codec = struct.Struct('{{ byte_order_flag }}{{ length.primitive_type.name | struct_fmt }}')
+    length = length_codec.unpack_from(ctx.buffer, ctx.offset)[0]
+    ctx.offset += length_codec.size
+    data_codec = struct.Struct(f'{{ byte_order_flag }}{length}{{ var_data.primitive_type.name | struct_fmt }}')
+    data = data_codec.unpack_from(ctx.buffer, ctx.offset)
+    ctx.offset += data_codec.size
+    return list(data)
+  {% endif %}
+{% endmacro %}
+
+{% macro define_group_encoding__pack(field, schema) %}
+  {% set block_length_type = (field.dimension_type.contained_types | selectattr('name', 'equalto', 'blockLength') | first) -%}
+  {% set num_in_group_type = (field.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+
+def pack_{{ make_encoding__suffix(field) }}(v):
+    # group {{ field.name }}
+    assert isinstance(v, list), 'expected list type'
+
+    {{ define_type_encoding__pack(block_length_type, schema) | indent(4) }}
+    {{ define_type_encoding__pack(num_in_group_type, schema) | indent(4) }}
+
+    count = len(v)
+
+    pack_{{ make_encoding__suffix(block_length_type) }}({{ field.block_length }})
+    pack_{{ make_encoding__suffix(num_in_group_type) }}(count)
+
+    ctx.offset += {{ field.dimension_type.encoded_length }}
+
+    {% for field in field.fields %}
+    {{ define_encoding__pack(field, schema) | indent(4) -}}
+    {% endfor %}
+
+    for entry in v:
+    {% for field in field.fields if field.token == 'field' %}
+        pack_{{ make_encoding__suffix(field) }}(entry.get('{{ field.name }}'))
+    {% endfor %}
+        ctx.offset += {{ field.block_length }}
+    {% for field in field.fields if field.token in ('group', 'data') %}
+        pack_{{ make_encoding__suffix(field) }}(entry.get('{{ field.name }}'))
+    {% endfor %}
+
+{% endmacro %}
+
+{% macro define_group_encoding__unpack(field, schema) %}
+  {% set block_length_type = (field.dimension_type.contained_types | selectattr('name', 'equalto', 'blockLength') | first) -%}
+  {% set num_in_group_type = (field.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+
+def unpack_{{ make_encoding__suffix(field) }}():
+    {{ define_type_encoding__unpack(block_length_type, schema) | indent(4) }}
+    {{ define_type_encoding__unpack(num_in_group_type, schema) | indent(4) }}
+
+    acting_block_length = unpack_{{ make_encoding__suffix(block_length_type) }}()
+    count = unpack_{{ make_encoding__suffix(num_in_group_type) }}()
+
+    ctx.offset += {{ field.dimension_type.encoded_length }}
+
+    {% for field in field.fields %}
+    {{ define_encoding__unpack(field, schema) | indent(4) -}}
+    {% endfor %}
+
+    value = list()
+
+    for i in range(count):
+        entry = {}
+    {% for field in field.fields if field.token == 'field' %}
+        entry['{{ field.name }}'] = unpack_{{ make_encoding__suffix(field) }}()
+    {% endfor %}
+        ctx.offset += {{ field.block_length }}
+    {% for field in field.fields if field.token in ('group', 'data') %}
+        entry['{{ field.name }}'] = unpack_{{ make_encoding__suffix(field) }}()
+    {% endfor %}
+        value.append(entry)
+
+    return value
+
+{% endmacro %}
+
+{% macro define_encoding__pack(field, schema) %}
+  {% if field.token == 'field' %}
+{{ define_field_encoding__pack(field, schema) -}}
+  {% elif field.token == 'group' %}
+{{ define_group_encoding__pack(field, schema) -}}
+  {% elif field.token == 'data' %}
+{{ define_data_encoding__pack(field, schema) -}}
+  {% else %}
+assert False, 'unknown entry token ({{ field.token }})'
+  {% endif %}
+{% endmacro %}
+
+{% macro define_encoding__unpack(field, schema) %}
+  {% if field.token == 'field' %}
+{{ define_field_encoding__unpack(field, schema) -}}
+  {% elif field.token == 'group' %}
+{{ define_group_encoding__unpack(field, schema) -}}
+  {% elif field.token == 'data' %}
+{{ define_data_encoding__unpack(field, schema) -}}
+  {% else %}
+assert False, 'unknown entry token ({{ field.token }})'
+  {% endif %}
+{% endmacro %}
+
+{% macro define_composite(field, schema) %}
+  {% set class_name = field.name | format_class_name -%}
+  {% set type = field.type if field.token == 'field' else field -%}
+  {% set byte_order_flag = '<' if schema.byte_order == 'littleEndian' else '>' -%}
+  {% set is_optional = field.presence == 'optional' -%}
+
+class {{ class_name }}(Codec):
+    @staticmethod
+    def pack(ctx: CodecContext, value: Any) -> None:
+  {% for field in type.contained_types %}
+        {{ define_type_encoding__pack(field, schema) | indent(8) -}}
+  {% endfor %}
+
+  {% if is_optional %}
+        if not v:
+            pack_{{ make_encoding__suffix(type.contained_types[0]) }}(None)
+            return
+  {% endif %}
+  {% for field in type.contained_types %}
+    {% if field.presence in ('optional', 'constant') %}
+        pack_{{ make_encoding__suffix(field) }}(value.get('{{ field.reference_name }}', None))
+    {% elif field.presence == 'required' %}
+        pack_{{ make_encoding__suffix(field) }}(value.get('{{ field.reference_name }}'))
+    {% endif %}
+  {% endfor %}
+
+    @staticmethod
+    def unpack(ctx: CodecContext) -> Any:
+  {% for field in type.contained_types %}
+        {{ define_type_encoding__unpack(field, schema) | indent(8) -}}
+  {% endfor %}
+
+        value0 = unpack_{{ make_encoding__suffix(type.contained_types[0]) }}()
+  {% if is_optional %}
+        if not value0:
+            return None
+  {% endif %}
+        return {
+            '{{ type.contained_types[0].reference_name }}': value0,
+  {% for field in type.contained_types %}
+    {% if loop.index0 != 0 %}
+            '{{ field.reference_name }}': unpack_{{ make_encoding__suffix(field) }}(),
+    {% endif %}
+  {% endfor %}
+        }
+
+    def __repr__(self) -> str:
+        return f'<{{ class_name }}>'
 {% endmacro %}
 
 {% macro define_message(message, schema) %}
-{% set message_class_name = message.name | format_class_name -%}
-{% set header_class_name = schema.header_type.name | format_class_name -%}
+{% set class_name = message.name | format_message_name -%}
 
-class {{ message_class_name }}(Message):
-    SCHEMA_ID = {{ schema.id }}
-    SCHEMA_VERSION = {{ schema.version }}
-    BLOCK_LENGTH = {{ message.block_length }}
-    TEMPLATE_ID = {{ message.id }}
-
-{% for field in message.fields if field.token == 'group' %}
-    {{ define_group(field, schema) | indent(4) }}
-
-{% endfor %}
-{% for field in message.fields if field.token == 'data' %}
-    {{ define_data(field, schema) | indent(4) }}
-
-{% endfor %}
-
-    FIELDS = [
-{% for field in message.fields %}
-    {% if field.token == 'field' %}
-        {% if field.type.token == 'type' %}
-        {{ define_field_encoding_type(field, schema).strip() }},
-        {% elif field.type.token == 'enum' %}
-        {{ define_field_encoding_enum(field, schema).strip() }},
-        {% elif field.type.token == 'set' %}
-        {{ define_field_encoding_set(field, schema).strip() }},
-        {% elif field.type.token == 'composite' %}
-        {{ define_field_encoding_composite(field, schema).strip() }},
-        {% endif %}
-    {% elif field.token == 'data' %}
-        {{ define_field_encoding_data(field, schema).strip() }},
-    {% elif field.token == 'group' %}
-        {{ define_field_encoding_group(field, schema).strip() }},
-    {% endif %}
-{% endfor %}
-    ]
-
-    def __init__(self):
+class {{ class_name }}(Codec):
+  {% if message.fields | length  == 0 %}
+    @staticmethod
+    def pack(ctx: CodecContext, value: Any, acting_block_length: int = {{ message.block_length }}) -> None:
         pass
 
-    def pack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-{% for field in message.fields if field.token == 'field' %}
-        self.FIELDS[{{ loop.index0 }}].pack(buffer, offset)
-{% endfor %}
-        size = {{ message.block_length }}
-{% for field in message.fields %}
-    {% if field.token in ('group', 'data') %}
-        size += self.FIELDS[{{ loop.index0 }}].pack(buffer, offset + size)
-    {% endif %}
-{% endfor %}
-        return size
+    @staticmethod
+    def unpack(ctx: CodecContext, acting_block_length: int = {{ message.block_length }}) -> Any:
+        return {}
+  {% else %}
+    @staticmethod
+    def pack(ctx: CodecContext, value: Any, acting_block_length: int = {{ message.block_length }}) -> None:
+    {% for field in message.fields %}
+        {{ define_encoding__pack(field, schema) | indent(8) -}}
+    {% endfor %}
 
-    def unpack(self, buffer: Union[bytes, bytearray, memoryview], offset: int) -> int:
-        # TODO: acting block length?
-        #       acting version?
-        return 0
+        assert acting_block_length >= {{ message.block_length }}, 'invalid acting_block_length value'
 
+    {% for field in message.fields if field.token == 'field' %}
+      {# TODO: presence check for <field> #}
+        pack_{{ make_encoding__suffix(field) }}(value.get('{{ field.name }}'))
+    {% endfor %}
+        ctx.offset += acting_block_length
+    {% for field in message.fields if field.token in ('group', 'data') %}
+      {# TODO: presence check for <field> #}
+        pack_{{ make_encoding__suffix(field) }}(value.get('{{ field.name }}'))
+    {% endfor %}
+
+    @staticmethod
+    def unpack(ctx: CodecContext, acting_block_length: int = {{ message.block_length }}) -> Any:
+    {% for field in message.fields %}
+        {{ define_encoding__unpack(field, schema) | indent(8) -}}
+    {% endfor %}
+
+        assert acting_block_length >= {{ message.block_length }}, 'invalid acting_block_length value'
+
+        value = {}
+    {% for field in message.fields if field.token == 'field'%}
+        value['{{ field.name }}'] = unpack_{{ make_encoding__suffix(field) }}()
+    {% endfor %}
+        ctx.offset += acting_block_length
+    {% for field in message.fields if field.token in ('group', 'data') %}
+        value['{{ field.name }}'] = unpack_{{ make_encoding__suffix(field) }}()
+    {% endfor %}
+        return value
+  {% endif %}
+
+    def __repr__(self) -> str:
+        return f'<{{ class_name }}>'
 {% endmacro %}

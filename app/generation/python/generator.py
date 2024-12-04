@@ -6,6 +6,7 @@ from typing import Optional
 import pathlib
 import os
 import re
+import numpy as np
 
 from app.generator import GeneratorBase
 
@@ -41,45 +42,71 @@ class Generator(GeneratorBase):
     def add_filters(self) -> None:
         self.env.filters['format_class_name'] = lambda value: value[0].upper() + value[1:]
         self.env.filters['replace_keyword']  = Generator.filter_replace_keyword
+        self.env.filters['format_message_name'] = lambda value: value[0].upper() + value[1:] + 'Message'
         self.env.filters['format_group_name'] = lambda value: value[0].upper() + value[1:] + 'Group'
         self.env.filters['format_data_name'] = lambda value: value[0].upper() + value[1:] + 'Data'
-        self.env.filters['format_encoding_class_name'] = lambda value: value[0].upper() + value[1:] + 'Encoding'
-        self.env.filters['format_method_name'] = lambda value: self.PATTERN.sub('_', value).lower()
+        self.env.filters['format_field_name'] = lambda value: value[0].upper() + value[1:] + 'Field'
+        self.env.filters['bit_to_value'] = lambda value: 1 << int(value)
+        self.env.filters['struct_fmt'] = Generator.filter_struct_fmt
+        self.env.filters['wrap_char'] = Generator.filter_wrap_char
+
+    @staticmethod
+    def filter_wrap_char(value: str, encoding_type: str) -> str:
+        if encoding_type == 'char':
+            return f'\'{value}\''
+        return value
+
+    @staticmethod
+    def filter_struct_fmt(value: str) -> str:
+        return {
+            'char': 'c',
+            'int': 'i',
+            'int8': 'b',
+            'int16': 'h',
+            'int32': 'i',
+            'int64': 'q',
+            'uint8': 'B',
+            'uint16': 'H',
+            'uint32': 'I',
+            'uint64': 'Q',
+            'float': 'f',
+            'double': 'd'
+        }.get(value)
 
     @staticmethod
     def filter_replace_keyword(value: str) -> str:
         return {
-            'CHAR_NULL':    '0',
-            'CHAR_MIN':     '0x20',
-            'CHAR_MAX':     '0x7e',
-            'INT8_NULL':    'np.iinfo(np.int8).min',
-            'INT8_MIN':     'np.iinfo(np.int8).min + 1',
-            'INT8_MAX':     'np.iinfo(np.int8).max',
-            'INT16_NULL':   'np.iinfo(np.int16).min',
-            'INT16_MIN':    'np.iinfo(np.int16).min + 1',
-            'INT16_MAX':    'np.iinfo(np.int16).max',
-            'INT32_NULL':   'np.iinfo(np.int32).min',
-            'INT32_MIN':    'np.iinfo(np.int32).min + 1',
-            'INT32_MAX':    'np.iinfo(np.int32).max',
-            'INT64_NULL':   'np.iinfo(np.int64).min',
-            'INT64_MIN':    'np.iinfo(np.int64).min + 1',
-            'INT64_MAX':    'np.iinfo(np.int64).max',
-            'UINT8_NULL':   'np.iinfo(np.uint8).max',
-            'UINT8_MIN':    'np.iinfo(np.uint8).min',
-            'UINT8_MAX':    'np.iinfo(np.uint8).max - 1',
-            'UINT16_NULL':  'np.iinfo(np.uint16).max',
-            'UINT16_MIN':   'np.iinfo(np.uint16).min',
-            'UINT16_MAX':   'np.iinfo(np.uint16).max - 1',
-            'UINT32_NULL':  'np.iinfo(np.uint32).max',
-            'UINT32_MIN':   'np.iinfo(np.uint32).min',
-            'UINT32_MAX':   'np.iinfo(np.uint32).max - 1',
-            'UINT64_NULL':  'np.iinfo(np.uint64).max',
-            'UINT64_MIN':   'np.iinfo(np.uint64).min',
-            'UINT64_MAX':   'np.iinfo(np.uint64).max - 1',
-            'FLOAT_NULL':   'np.float32(np.nan)',
-            'FLOAT_MIN':    'np.finfo(np.float32).min',
-            'FLOAT_MAX':    'np.finfo(np.float32).max',
-            'DOUBLE_NULL':  'np.float64(np.nan)',
-            'DOUBLE_MIN':   'np.finfo(np.float64).min',
-            'DOUBLE_MAX':   'np.finfo(np.float64).max'
+            'CHAR_NULL':    0,
+            'CHAR_MIN':     0x20,
+            'CHAR_MAX':     0x7e,
+            'INT8_NULL':    np.iinfo(np.int8).min,
+            'INT8_MIN':     np.iinfo(np.int8).min + 1,
+            'INT8_MAX':     np.iinfo(np.int8).max,
+            'INT16_NULL':   np.iinfo(np.int16).min,
+            'INT16_MIN':    np.iinfo(np.int16).min + 1,
+            'INT16_MAX':    np.iinfo(np.int16).max,
+            'INT32_NULL':   np.iinfo(np.int32).min,
+            'INT32_MIN':    np.iinfo(np.int32).min + 1,
+            'INT32_MAX':    np.iinfo(np.int32).max,
+            'INT64_NULL':   np.iinfo(np.int64).min,
+            'INT64_MIN':    np.iinfo(np.int64).min + 1,
+            'INT64_MAX':    np.iinfo(np.int64).max,
+            'UINT8_NULL':   np.iinfo(np.uint8).max,
+            'UINT8_MIN':    np.iinfo(np.uint8).min,
+            'UINT8_MAX':    np.iinfo(np.uint8).max - 1,
+            'UINT16_NULL':  np.iinfo(np.uint16).max,
+            'UINT16_MIN':   np.iinfo(np.uint16).min,
+            'UINT16_MAX':   np.iinfo(np.uint16).max - 1,
+            'UINT32_NULL':  np.iinfo(np.uint32).max,
+            'UINT32_MIN':   np.iinfo(np.uint32).min,
+            'UINT32_MAX':   np.iinfo(np.uint32).max - 1,
+            'UINT64_NULL':  np.iinfo(np.uint64).max,
+            'UINT64_MIN':   np.iinfo(np.uint64).min,
+            'UINT64_MAX':   np.iinfo(np.uint64).max - 1,
+            'FLOAT_NULL':   np.float32(np.nan),
+            'FLOAT_MIN':    np.finfo(np.float32).min,
+            'FLOAT_MAX':    np.finfo(np.float32).max,
+            'DOUBLE_NULL':  np.float64(np.nan),
+            'DOUBLE_MIN':   np.finfo(np.float64).min,
+            'DOUBLE_MAX':   np.finfo(np.float64).max
         }.get(value, value)
