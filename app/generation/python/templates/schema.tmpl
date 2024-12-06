@@ -1,26 +1,15 @@
 {% import 'generate.tmpl' as generate %}
-
 import struct
 import sys
 
 from enum import Enum, Flag
-from abc import ABC, abstractmethod
-from typing import Any, Union, List, Optional
+from typing import Any, Union, Optional
 
 # Codec encode/decode context
 class CodecContext:
     def __init__(self, buffer: Union[bytes, bytearray, memoryview], offset: int = 0) -> None:
         self.buffer = buffer
         self.offset = offset
-
-class Codec(ABC):
-    @abstractmethod
-    def pack(self, ctx: CodecContext, value: Any) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def unpack(self, ctx: CodecContext) -> Any:
-        raise NotImplementedError
 
 {% for type in schema.types %}
   {% if type.token == 'composite' and type.name == 'messageHeader' %}
@@ -36,67 +25,57 @@ class Codec(ABC):
 {{ generate.define_message(message, schema) }}
 {% endfor %}
 
-buffer = bytearray(10)
-ctx = CodecContext(buffer)
-print(buffer)
+class Schema:
+    SCHEMA_ID = {{ schema.id }}
+    VERSION = {{ schema.version }}
 
-# ctx.offset = 0
-# codec = MDInstrumentDefinitionSpread56Message.DisplayFactorField()
-# codec.pack(ctx, { 'mantissa': 100 })
-# print(buffer)
+    MESSAGES = dict([
+{% for message in schema.messages %}
+        ({{ message.id }}, {{ message.name | format_message_name }}),
+{% endfor %}
+    ])
+
+    @staticmethod
+    def getCodecCls(template_id: int):
+        codec = Schema.MESSAGES.get(template_id)
+        if not codec:
+            raise Exception(f'codec for message with templateId={template_id} not found')
+        return codec
+
+    @staticmethod
+    def encode(ctx: CodecContext, value: Any, *, cls=None, template_id: Optional[int] = None) -> None:
+        assert cls or template_id, 'cls or template_id argument required'
+        if not cls:
+            cls = Schema.getCodecCls(template_id)
+        MessageHeader.pack(ctx, {
+            'blockLength': cls.BLOCK_LENGTH,
+            'templateId': cls.TEMPLATE_ID,
+            'schemaId': {{ schema.id }},
+            'version': {{ schema.version }}
+        })
+        ctx.offset += MessageHeader.ENCODED_LENGTH
+        return cls.pack(ctx, value)
+
+    @staticmethod
+    def decode(ctx: CodecContext) -> Any:
+        header = MessageHeader.unpack(ctx)
+        cls = Schema.getCodecCls(header.get('templateId'))
+        ctx.offset += MessageHeader.ENCODED_LENGTH
+        return cls.unpack(ctx, header.get('blockLength'))
+
+# Example
 #
-# print(codec.unpack(ctx))
+# create CodecContext:
+# buffer = bytearray(64)
+# ctx = CodecContext(buffer)
+#
+# encode:
+# Schema.encode(ctx, { 'nextSeqNo': 1234 }, template_id=2)
+# ... or ...
+# Schema.encode(ctx, { 'nextSeqNo': 1234 }, cls=Sequence_2Message)
+# print(f'encoded size: {ctx.offset}')
+#
+# decode:
+# ctx.offset = 0 # reset cursor
+# print(Schema.decode(ctx))
 
-ctx.offset = 2
-MessageHeader.pack(ctx, {
-    'blockLength': 20,
-    'templateId': 13,
-    'schemaId': 20,
-    'version': 0
-})
-print(buffer)
-print(MessageHeader.unpack(ctx))
-
-ctx.offset = 0
-UserDataStreamStartResponseMessage.pack(ctx, {
-    'listenKey': 'key12345'
-})
-print(buffer)
-
-ctx.offset = 0
-print(UserDataStreamStartResponseMessage.unpack(ctx))
-
-buffer = bytearray(120)
-ctx = CodecContext(buffer)
-
-AccountCommissionResponseMessage.pack(ctx, {
-    'commissionExponent': 50,
-    'discountExponent': 55,
-    'standardCommissionMaker': 10000,
-    'standardCommissionTaker': 10001,
-    'standardCommissionBuyer': 10002,
-    'standardCommissionSeller': 10003,
-    'taxCommissionMaker': 10004,
-    'taxCommissionTaker': 10005,
-    'taxCommissionBuyer': 10006,
-    'taxCommissionSeller': 10007,
-    'discountEnabledForAccount': BoolEnum.TRUE,
-    'discountEnabledForSymbol': BoolEnum.FALSE,
-    'discount': 30000,
-    'symbol': 'SUPER-MEGA-GIPER-SYMBOL',
-    'discountAsset': '123'
-})
-
-ctx.offset = 0
-print(AccountCommissionResponseMessage.unpack(ctx))
-
-ctx.offset = 0
-CancelOpenOrdersResponseMessage.pack(ctx, {
-    'responses': [
-        { 'response': [32, 32, 32] },
-        { 'response': [64, 64, 64] },
-        { 'response': [32, 48, 64] }
-    ]
-})
-ctx.offset = 0
-print(CancelOpenOrdersResponseMessage.unpack(ctx))
