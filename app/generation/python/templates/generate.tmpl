@@ -103,7 +103,7 @@ def unpack_{{ make_encoding__suffix(field) }}():
   {% endif %}
   {% if field.presence == 'optional' and type.length == 1 %}
 def unpack_{{ make_encoding__suffix(field) }}():
-    raw_value = struct.unpack_from('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})
+    raw_value = struct.unpack_from('{{ byte_order_flag }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }})[0]
     return raw_value if raw_value != {{ type.null_value | replace_keyword }} else None
   {% endif %}
   {% if field.presence == 'required' and type.length > 1 %}
