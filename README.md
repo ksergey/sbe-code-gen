@@ -1,3 +1,8 @@
+[<img src="https://img.shields.io/github/license/ksergey/sbe-code-gen">](https://opensource.org/license/gpl-3-0)
+[<img src="https://img.shields.io/github/actions/workflow/status/ksergey/sbe-code-gen/on_push.yml?logo=linux">](https://github.com/ksergey/sbe-code-gen/actions/workflows/on_push.yml)
+[<img src="https://img.shields.io/badge/language-python3-red">](https://en.wikipedia.org/wiki/Python_(programming_language))
+[<img src="https://img.shields.io/badge/language-C%2B%2B23-red">](https://en.wikipedia.org/wiki/C%2B%2B23)
+
 # sbe-code-gen
 
 Simple Binary Encoding codec generator for C++20, C++23, Python [WIP]
