@@ -11,8 +11,6 @@ import numpy as np
 from app.generator import GeneratorBase
 
 class Generator(GeneratorBase):
-    PATTERN = re.compile(r'(?<!^)(?=[A-Z])')
-
     def __init__(self, path: str) -> None:
         self.path = path
         self.env = Environment(

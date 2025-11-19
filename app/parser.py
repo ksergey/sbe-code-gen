@@ -7,6 +7,7 @@ from typing import Optional, Dict, Union, Tuple
 from collections import UserDict
 from app.schema import *
 from app.xml import *
+import numpy as np
 
 class UniqueKeysDict(UserDict):
     def __setitem__(self, key, value):
@@ -52,11 +53,6 @@ class Parser:
             raise Exception(f'primitive type "{name}" not found')
 
     def get_schema(self) -> Schema:
-        header_type_str = attr(self.root, 'headerType', 'messageHeader')
-        header_type = self.get_encoded_type_by_name(header_type_str)
-        if not isinstance(header_type, Composite) or not header_type.is_valid_header_type():
-            raise Exception(f'type "{header_type_str}" is not valid header type')
-
         return Schema(
             package=attr(self.root, 'package', default=None),
             id=attr(self.root, 'id', cast=int),
@@ -64,7 +60,7 @@ class Parser:
             semantic_type=attr(self.root, 'semanticType', None),
             byte_order=attr(self.root, 'byteOrder', ByteOrder.LITTLE_ENDIAN, cast=ByteOrder),
             description=attr(self.root, 'description', None),
-            header_type=header_type,
+            header_type=self.get_header(),
             types=self.get_types(),
             messages=self.get_messages()
         )
@@ -320,9 +316,13 @@ class Parser:
         if block_length < computed_offset:
             raise Exception(f'invalid blockLength value for message "{name_str}"')
 
+        id = attr(node, 'id', cast=int)
+        if not self.can_encode_message_id(id):
+            raise Exception(f'id value of message "{name_str}" cannot be encoded into header.templateId (value of of range)')
+
         return Message(
             name=name_str,
-            id=attr(node, 'id', cast=int),
+            id=id,
             description=attr(node, 'description', None),
             block_length=block_length,
             semantic_type=attr(node, 'semanticType', None),
@@ -479,6 +479,13 @@ class Parser:
             return Parser.get_primitive_type_as_encoded_type(Parser.PRIMITIVE_TYPE_BY_NAME[name])
         raise Exception(f'encoded type "{name}" not found')
 
+    def get_header(self) -> Composite:
+        header_type_str = attr(self.root, 'headerType', 'messageHeader')
+        header_type = self.get_encoded_type_by_name(header_type_str)
+        if not isinstance(header_type, Composite) or not header_type.is_valid_header_type():
+            raise Exception(f'type "{header_type_str}" is not valid header type')
+        return header_type
+
     def is_valid_value_ref(self, value_ref: str) -> bool:
         enum_name, enum_value_name = value_ref.split('.')
         enum_type = self.get_encoded_type_by_name(enum_name)
@@ -487,3 +494,59 @@ class Parser:
         if enum_value_name not in enum_type.valid_value_by_name:
             return False
         return True
+
+    '''
+    Return true on message id value could be encoded into header.templateId type
+    '''
+    def can_encode_message_id(self, template_id: int) -> bool:
+        header_type = self.get_header()
+        template_id_type = header_type.find_type('templateId')
+        template_id_min_value = template_id_type.min_value or template_id_type.primitive_type.min_value
+        template_id_max_value = template_id_type.max_value or template_id_type.primitive_type.max_value
+        return template_id in range(Parser.decode_primitive_type_value(template_id_min_value),
+                                    Parser.decode_primitive_type_value(template_id_max_value))
+
+    '''
+    Decode value like UINT8_MIN, UINT16_MAX, etc into exactly constant
+    i.e.
+        UINT8_MIN -> 0
+        UINT8_MAX -> 254
+        UINT8_NULL -> 255
+    '''
+    @staticmethod
+    def decode_primitive_type_value(value: str):
+        return {
+            'CHAR_NULL':    0,
+            'CHAR_MIN':     0x20,
+            'CHAR_MAX':     0x7e,
+            'INT8_NULL':    np.iinfo(np.int8).min,
+            'INT8_MIN':     np.iinfo(np.int8).min + 1,
+            'INT8_MAX':     np.iinfo(np.int8).max,
+            'INT16_NULL':   np.iinfo(np.int16).min,
+            'INT16_MIN':    np.iinfo(np.int16).min + 1,
+            'INT16_MAX':    np.iinfo(np.int16).max,
+            'INT32_NULL':   np.iinfo(np.int32).min,
+            'INT32_MIN':    np.iinfo(np.int32).min + 1,
+            'INT32_MAX':    np.iinfo(np.int32).max,
+            'INT64_NULL':   np.iinfo(np.int64).min,
+            'INT64_MIN':    np.iinfo(np.int64).min + 1,
+            'INT64_MAX':    np.iinfo(np.int64).max,
+            'UINT8_NULL':   np.iinfo(np.uint8).max,
+            'UINT8_MIN':    np.iinfo(np.uint8).min,
+            'UINT8_MAX':    np.iinfo(np.uint8).max - 1,
+            'UINT16_NULL':  np.iinfo(np.uint16).max,
+            'UINT16_MIN':   np.iinfo(np.uint16).min,
+            'UINT16_MAX':   np.iinfo(np.uint16).max - 1,
+            'UINT32_NULL':  np.iinfo(np.uint32).max,
+            'UINT32_MIN':   np.iinfo(np.uint32).min,
+            'UINT32_MAX':   np.iinfo(np.uint32).max - 1,
+            'UINT64_NULL':  np.iinfo(np.uint64).max,
+            'UINT64_MIN':   np.iinfo(np.uint64).min,
+            'UINT64_MAX':   np.iinfo(np.uint64).max - 1,
+            'FLOAT_NULL':   np.float32(np.nan),
+            'FLOAT_MIN':    np.finfo(np.float32).min,
+            'FLOAT_MAX':    np.finfo(np.float32).max,
+            'DOUBLE_NULL':  np.float64(np.nan),
+            'DOUBLE_MIN':   np.finfo(np.float64).min,
+            'DOUBLE_MAX':   np.finfo(np.float64).max
+        }.get(value, value)

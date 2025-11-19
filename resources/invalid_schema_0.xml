@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns2:messageSchema xmlns:ns2="http://fixprotocol.io/2016/sbe"
+                   package="mktdata"
+                   id="1"
+                   version="9"
+                   semanticVersion="FIX5SP2"
+                   description="20180308"
+                   byteOrder="littleEndian">
+    <types>
+        <composite name="messageHeader" description="Template ID and length of message root">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="templateId" primitiveType="uint16"/>
+            <type name="schemaId" primitiveType="uint16"/>
+            <type name="version" primitiveType="uint16"/>
+        </composite>
+    </types>
+    <ns2:message name="HelloMsg" id="1" blockLength="0"/>
+    <ns2:message name="GoodbyeMsg" id="65536" blockLength="0" description="value of id is out of range uint16"/>
+</ns2:messageSchema>
