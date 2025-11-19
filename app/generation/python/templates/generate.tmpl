@@ -110,7 +110,8 @@ def unpack_{{ make_encoding__suffix(field) }}():
     {% if is_string %}
 def unpack_{{ make_encoding__suffix(field) }}():
     raw_value = struct.unpack_from('{{ type.length }}s', ctx.buffer, ctx.offset + {{ field.offset }})[0]
-    return raw_value.decode('utf-8').rstrip(chr({{ type.null_value | replace_keyword }}))
+    raw_value = raw_value.split(b'\{{ type.null_value | replace_keyword }}')[0] # TODO: need to check
+    return raw_value.decode('utf-8')
     {% else %}
 def unpack_{{ make_encoding__suffix(field) }}():
     return list(struct.unpack_from('{{ byte_order_flag }}{{ type.length }}{{ primitive_type.name | struct_fmt }}', ctx.buffer, ctx.offset + {{ field.offset }}))
