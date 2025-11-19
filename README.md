@@ -17,3 +17,5 @@ Simple Binary Encoding codec generator for C++20, C++23, Python [WIP]
 - [ ] (cppng) set/get fixed-length strings as variable length string (trim till '\0')
 - [ ] (cppng) calculate buffer size for a message
 - [ ] tests
+- [ ] examples
+- [ ] docs
