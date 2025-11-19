@@ -2,7 +2,7 @@ include(FetchContent)
 
 if (NOT TARGET doctest_with_main)
   FetchContent_Declare(doctest
-    URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.11.tar.gz
+    URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.12.tar.gz
     DOWNLOAD_EXTRACT_TIMESTAMP ON
   )
   FetchContent_MakeAvailable(doctest)
