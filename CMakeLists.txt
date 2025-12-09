@@ -40,7 +40,7 @@ function(sbe_make_codec TARGET)
     DEPENDS ${PARSED_SCHEMA} python_venv
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${PARSED_OUTPUT}"
     COMMAND ${pythonExe} -m app --schema="${PARSED_SCHEMA}" --destination="${destDir}" --generator="${PARSED_GENERATOR}" ${extraArgs}
-    WORKING_DIRECTORY ${cppCodeGenRoot}
+    WORKING_DIRECTORY "${cppCodeGenRoot}"
     COMMENT "generating schema (${PARSED_SCHEMA})"
   )
 
