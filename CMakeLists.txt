@@ -13,7 +13,7 @@ add_custom_command(
   COMMAND ${Python3_EXECUTABLE} -m venv ${pythonEnv}
   COMMAND ${pythonExe} -m pip install --upgrade pip
   COMMAND ${pythonExe} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
-  COMMENT "creating python virtualenv at ${pythonEnv}"
+  COMMENT "Creating python virtualenv at ${pythonEnv}"
 )
 add_custom_target(python_venv DEPENDS ${pythonEnv}/pyvenv.cfg)
 
@@ -39,9 +39,9 @@ function(sbe_make_codec TARGET)
     OUTPUT ${destDir}/schema.h
     DEPENDS ${PARSED_SCHEMA} python_venv
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${PARSED_OUTPUT}"
-    COMMAND ${pythonExe} -m app --schema="${PARSED_SCHEMA}" --destination="${destDir}" --generator="${PARSED_GENERATOR}" ${extraArgs}
+    COMMAND "${pythonExe}" -m app --schema="${PARSED_SCHEMA}" --destination="${destDir}" --generator="${PARSED_GENERATOR}" ${extraArgs}
     WORKING_DIRECTORY "${cppCodeGenRoot}"
-    COMMENT "generating schema (${PARSED_SCHEMA})"
+    COMMENT "Generating schema (${PARSED_SCHEMA})"
   )
 
   add_library(${TARGET} INTERFACE EXCLUDE_FROM_ALL)
