@@ -2,11 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 project(sbe-code-gen)
 
-set(cppCodegenRoot ${CMAKE_CURRENT_SOURCE_DIR})
-
 function(sbe_make_codec TARGET)
-  message(STATUS "cppCodegenRoot: ${cppCodegenRoot}")
-
   set(options)
   set(oneValueArgs SCHEMA OUTPUT GENERATOR INCLUDE_BASE PACKAGE)
   set(multiValueArgs)
@@ -26,6 +22,7 @@ function(sbe_make_codec TARGET)
     set(extraArgs ${extraArgs} --package="${PARSED_PACKAGE}")
   endif()
 
+  set(cppCodegenRoot ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
   set(pythonEnvRoot ${CMAKE_CURRENT_BINARY_DIR}/venv)
   set(pythonEnvExe ${CMAKE_CURRENT_BINARY_DIR}/venv/bin/python)
 
