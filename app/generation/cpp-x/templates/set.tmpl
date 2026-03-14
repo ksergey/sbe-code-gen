@@ -1,0 +1,13 @@
+{% extends 'document.tmpl' %}
+{% import 'generate.tmpl' as generate with context %}
+
+{% block includes %}
+#include <cstdint>
+#include <limits>
+{% endblock %}
+
+{% block content %}
+
+{{ generate.set(type) }}
+
+{% endblock %}

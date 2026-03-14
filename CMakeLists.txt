@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.14)
 
 project(sbe-code-gen)
 
+# TODO: setup env should be done once?
+
 function(sbe_make_codec TARGET)
   set(options)
   set(oneValueArgs SCHEMA OUTPUT GENERATOR INCLUDE_BASE PACKAGE)

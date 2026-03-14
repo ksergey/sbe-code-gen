@@ -1,0 +1,22 @@
+{% if schema.package != None %}
+    {% set namespace = schema.package | join('::') | replace(' ', '_') %}
+{% else %}
+    {% set namespace = 'sbe' %}
+{% endif %}
+{% set messageHeader = schema.header_type %}
+{% set blockLength = (messageHeader.contained_types | selectattr('name', 'equalto', 'blockLength') | first ) %}
+{% set templateId = (messageHeader.contained_types | selectattr('name', 'equalto', 'templateId') | first ) %}
+{% set schemaId = (messageHeader.contained_types | selectattr('name', 'equalto', 'schemaId') | first ) %}
+{% set version = (messageHeader.contained_types | selectattr('name', 'equalto', 'version') | first ) %}
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
+
+#pragma once
+
+{% block includes %}
+{% endblock %}
+
+namespace {{ namespace }} {
+{% block content %}
+{% endblock %}
+} // namespace {{ namespace }}

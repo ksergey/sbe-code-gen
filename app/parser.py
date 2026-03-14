@@ -414,6 +414,8 @@ class Parser:
             description=attr(node, 'description', None),
             dimension_type=dimension_type,
             block_length=block_length,
+            since_version=attr(node, 'sinceVersion', 0, cast=int),
+            deprecated=attr(node, 'deprecated', None, cast=int),
             fields=field_by_name
         )
 

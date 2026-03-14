@@ -201,6 +201,8 @@ class GeneratorBase(ABC):
             'description': group.description,
             'dimension_type': GeneratorBase.make_encoded_type_definition(group.dimension_type),
             'block_length': group.block_length,
+            'since_version': group.since_version,
+            'deprecated': group.deprecated,
             'fields': fields
         }
 

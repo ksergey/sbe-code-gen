@@ -204,6 +204,8 @@ class Group:
     description: Optional[str] = field(default=None)
     dimension_type: Composite = field(default_factory=Composite)
     block_length: Optional[int] = field(default=None)
+    since_version: int = field(default=0)
+    deprecated: Optional[int] = field(default=None)
     fields: Dict[str, Union[Field, Group, Data]] = field(default_factory=dict)
 
 @dataclass(frozen=True)
