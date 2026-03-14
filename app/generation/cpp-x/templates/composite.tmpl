@@ -100,6 +100,12 @@ public:
     {{ generate.field_ref_composite(contained_type) | indent(4) }}
     {% endif %}
 {% endfor %}
+
+    using Fields = MP_List<
+{% for contained_type in type.contained_types %}
+        MPField<"{{ contained_type.reference_name }}", {{ contained_type.reference_name | fmt_field_ref }}>,
+{% endfor %}
+    >;
 };
 
 {% endblock %}

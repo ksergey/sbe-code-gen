@@ -3,6 +3,7 @@
 {% block includes %}
 #include <concepts>
 #include <cstdint>
+#include <type_traits>
 #include <limits>
 {% endblock %}
 
@@ -84,5 +85,8 @@ constexpr void swapByteOrder(T& value) noexcept {
         }
     }
 }
+
+template <typename... Ts>
+struct MP_List {};
 
 {% endblock %}
