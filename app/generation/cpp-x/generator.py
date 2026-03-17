@@ -23,26 +23,26 @@ class Generator(GeneratorBase):
         self.ensure_path_exists()
 
         for encoded_type in schema['types']:
-            document_name = self.make_document_name(encoded_type['name'])
+            type_class_name = self.env.filters['fmt_class_type'](encoded_type['name'])
+            type_class_h_file = self.env.filters['fmt_header_name'](type_class_name)
             if encoded_type['token'] == 'type':
                 pass
             elif encoded_type['token'] == 'composite':
-                print(f'generating composite type (to {document_name})')
-                self.generate_document(document_name, 'composite.tmpl', type=encoded_type, schema=schema)
+                print(f'Cenerating composite type {type_class_name} (to {type_class_h_file})')
+                self.generate_document(type_class_h_file, 'composite.tmpl', type=encoded_type, schema=schema)
             elif encoded_type['token'] == 'enum':
-                print(f'generating enum type (to {document_name})')
-                self.generate_document(document_name, 'enum.tmpl', type=encoded_type, schema=schema)
+                print(f'Cenerating enum type {type_class_name} (to {type_class_h_file})')
+                self.generate_document(type_class_h_file, 'enum.tmpl', type=encoded_type, schema=schema)
             elif encoded_type['token'] == 'set':
-                print(f'generating set type (to {document_name})')
-                self.generate_document(document_name, 'set.tmpl', type=encoded_type, schema=schema)
+                print(f'Cenerating set type {type_class_name} (to {type_class_h_file})')
+                self.generate_document(type_class_h_file, 'set.tmpl', type=encoded_type, schema=schema)
 
         for message in schema['messages']:
-            document_name = self.make_document_name(message['name'])
-            print(f'generating message (to {document_name})')
-            self.generate_document(document_name, 'message.tmpl', message=message, schema=schema,
-                                  includes=self.generate_includes_for_message(message, schema))
+            message_class_name = self.env.filters['fmt_class_message'](message['name'])
+            message_class_h_file = self.env.filters['fmt_header_name'](message_class_name)
+            print(f'Generating message {message_class_name} (to {message_class_h_file})')
+            self.generate_document(message_class_h_file, 'message.tmpl', message=message, schema=schema)
 
-        self.generate_document('schema.h', 'schema.tmpl', schema=schema, includes=self.generate_includes(schema))
         self.generate_document('common.h', 'common.tmpl', schema=schema)
 
     def make_document_name(self, name: str) -> str:
@@ -54,39 +54,6 @@ class Generator(GeneratorBase):
         document_content = template.render(**kwargs)
         with open(document_path, mode='w', encoding='utf8') as document:
             document.write(document_content)
-
-    def generate_includes_for_message(self, message: dict, schema: dict = None) -> list:
-        includes = set()
-        for field in message['fields']:
-            if field['token'] == 'field':
-                if field['type']['token'] in ('composite', 'enum', 'set'):
-                    includes.add(self.make_document_name(field['type']['name']))
-            elif field['token'] == 'group':
-                includes.add(self.make_document_name(field['dimension_type']['name']))
-                # this func could be used for iterate over group fields
-                includes = includes.union(self.generate_includes_for_message(field))
-            elif field['token'] == 'data':
-                includes.add(self.make_document_name(field['type']['name']))
-
-        if schema != None:
-            includes.add(self.make_document_name(schema['header_type']['name']))
-
-        return list(includes)
-
-    def generate_includes_for_composite(self, composite: dict) -> list:
-        includes = set()
-        for field in composite['contained_types']:
-            if field['token'] in ('composite', 'enum', 'set'):
-                includes.add(self.make_document_name(field['name']))
-
-        return list(includes)
-
-    def generate_includes(self, schema: dict) -> list:
-        includes = set()
-        for message in schema['messages']:
-            includes.add(self.make_document_name(message['name']))
-
-        return list(includes)
 
     def ensure_path_exists(self) -> None:
         if not os.path.exists(self.path):
@@ -102,7 +69,13 @@ class Generator(GeneratorBase):
         self.env.filters['fmt_field_ref'] = lambda value: value[0].upper() + value[1:] + 'Ref'
         self.env.filters['lower_first'] = lambda value: value[0].lower() + value[1:]
         self.env.filters['upper_first'] = lambda value: value[0].upper() + value[1:]
-        self.env.filters['document_name'] = lambda value: self.make_document_name(value)
+
+        self.env.filters['fmt_class_type'] = lambda s: s[0].upper() + s[1:]
+        self.env.filters['fmt_class_ref'] = lambda s: s[0].upper() + s[1:] + 'Ref'
+        self.env.filters['fmt_class_message'] = lambda s: s[0].upper() + s[1:]
+        self.env.filters['fmt_class_group'] = lambda s: s[0].upper() + s[1:] + 'Group'
+        self.env.filters['fmt_class_data'] = lambda s: s[0].upper() + s[1:] + 'Data'
+        self.env.filters['fmt_header_name'] = lambda s: s + '.h'
 
     @staticmethod
     def filter_replace_keyword(value: str) -> str:

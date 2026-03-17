@@ -89,4 +89,37 @@ constexpr void swapByteOrder(T& value) noexcept {
 template <typename... Ts>
 struct MP_List {};
 
+template <std::size_t N>
+using MP_SizeT = std::integral_constant<std::size_t, N>;
+
+namespace detail {
+
+template <typename L>
+struct MP_SizeImpl;
+
+template <template <typename...> typename L, typename... T>
+struct MP_SizeImpl<L<T...>> {
+    using type = MP_SizeT<sizeof...(T)>;
+};
+
+} // namespace detail
+
+template <typename L>
+using MP_Size = typename detail::MP_SizeImpl<L>::type;
+
+namespace detail {
+
+template <typename L, typename I>
+struct MP_AtImpl;
+
+template <template <typename...> typename L, typename... T, typename I>
+struct MP_AtImpl<L<T...>, I> {
+    using type = typename std::tuple_element<I::value, std::tuple<T...>>::type;
+};
+
+} // namespace detail
+
+template <typename L, typename I>
+using MP_At = typename detail::MP_AtImpl<L, I>::type;
+
 {% endblock %}

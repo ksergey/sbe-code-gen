@@ -4,6 +4,8 @@
 {% set schemaId = (messageHeader.contained_types | selectattr('name', 'equalto', 'schemaId') | first ) %}
 {% set version = (messageHeader.contained_types | selectattr('name', 'equalto', 'version') | first ) %}
 
+{% set version_cpp_t = version.primitive_type.name | replace_keyword %}
+
 {# ------------------------------------ #}
 
 {% macro enum(type) %}
@@ -112,11 +114,11 @@ struct {{ field_ref_class_name }} {
 {% if entry.presence == 'required' or entry.presence == 'optional' %}
     std::byte* buffer = nullptr;
 
-    constexpr {{ field_ref_class_name }}(std::byte* blockBuffer) noexcept
+    constexpr {{ field_ref_class_name }}(std::byte* blockBuffer, [[maybe_unused]] {{ version_cpp_t }} version) noexcept
         : buffer{blockBuffer + {{ entry.offset }}}
     {}
 {% elif entry.presence == 'constant' %}
-    constexpr {{ field_ref_class_name }}([[maybe_unused]] std::byte* blockBuffer) noexcept
+    constexpr {{ field_ref_class_name }}([[maybe_unused]] std::byte* blockBuffer, [[maybe_unused]] {{ version_cpp_t }} version) noexcept
     {}
 {% endif %}
 

@@ -103,9 +103,14 @@ public:
 
     using Fields = MP_List<
 {% for contained_type in type.contained_types %}
-        MPField<"{{ contained_type.reference_name }}", {{ contained_type.reference_name | fmt_field_ref }}>,
+        {{ contained_type.reference_name | fmt_field_ref }}{% if not loop.last %},{% endif +%}
 {% endfor %}
     >;
+
+    template<std::size_t N>
+    constexpr auto field() noexcept -> MP_At<Fields, std::integral_constant<std::size_t, N>> {
+        return MP_At<Fields, std::integral_constant<std::size_t, N>>{buffer_, actingVersion_};
+    }
 };
 
 {% endblock %}
