@@ -23,26 +23,25 @@ class Generator(GeneratorBase):
         self.ensure_path_exists()
 
         for encoded_type in schema['types']:
-            document_name = self.make_document_name(encoded_type['name'])
+            type_class_name = self.env.filters['fmt_class_type'](encoded_type['name'])
+            type_class_h_file = self.env.filters['fmt_header_name'](type_class_name)
             if encoded_type['token'] == 'type':
                 pass
             elif encoded_type['token'] == 'composite':
-                self.generate_document(document_name, 'composite.tmpl', type=encoded_type, schema=schema,
-                                       includes=self.generate_includes_for_composite(encoded_type))
+                print(f'Cenerating composite type {type_class_name} (to {type_class_h_file})')
+                self.generate_document(type_class_h_file, 'composite.tmpl', type=encoded_type, schema=schema)
             elif encoded_type['token'] == 'enum':
-                self.generate_document(document_name, 'enum.tmpl', type=encoded_type, schema=schema)
+                print(f'Cenerating enum type {type_class_name} (to {type_class_h_file})')
+                self.generate_document(type_class_h_file, 'enum.tmpl', type=encoded_type, schema=schema)
             elif encoded_type['token'] == 'set':
-                self.generate_document(document_name, 'set.tmpl', type=encoded_type, schema=schema)
+                print(f'Cenerating set type {type_class_name} (to {type_class_h_file})')
+                self.generate_document(type_class_h_file, 'set.tmpl', type=encoded_type, schema=schema)
 
         for message in schema['messages']:
-            document_name = self.make_document_name(message['name'])
-            self.generate_document(document_name, 'message.tmpl', message=message, schema=schema,
-                                  includes=self.generate_includes_for_message(message, schema))
-
-        self.generate_document('schema.h', 'schema.tmpl', schema=schema, includes=self.generate_includes(schema))
-
-    def make_document_name(self, name: str) -> str:
-        return self.env.filters['format_class_name'](name) + '.h'
+            message_class_name = self.env.filters['fmt_class_message'](message['name'])
+            message_class_h_file = self.env.filters['fmt_header_name'](message_class_name)
+            print(f'Generating message {message_class_name} (to {message_class_h_file})')
+            self.generate_document(message_class_h_file, 'message.tmpl', message=message, schema=schema)
 
     def generate_document(self, document_name: str, template_name: str, **kwargs) -> None:
         template = self.env.get_template(template_name)
@@ -51,56 +50,22 @@ class Generator(GeneratorBase):
         with open(document_path, mode='w', encoding='utf8') as document:
             document.write(document_content)
 
-    def generate_includes_for_message(self, message: dict, schema: dict = None) -> list:
-        includes = set()
-        for field in message['fields']:
-            if field['token'] == 'field':
-                if field['type']['token'] in ('composite', 'enum', 'set'):
-                    includes.add(self.make_document_name(field['type']['name']))
-            elif field['token'] == 'group':
-                includes.add(self.make_document_name(field['dimension_type']['name']))
-                # this func could be used for iterate over group fields
-                includes = includes.union(self.generate_includes_for_message(field))
-            elif field['token'] == 'data':
-                includes.add(self.make_document_name(field['type']['name']))
-
-        if schema != None:
-            includes.add(self.make_document_name(schema['header_type']['name']))
-
-        return list(includes)
-
-    def generate_includes_for_composite(self, composite: dict) -> list:
-        includes = set()
-        for field in composite['contained_types']:
-            if field['token'] in ('composite', 'enum', 'set'):
-                includes.add(self.make_document_name(field['name']))
-
-        return list(includes)
-
-    def generate_includes(self, schema: dict) -> list:
-        includes = set()
-        for message in schema['messages']:
-            includes.add(self.make_document_name(message['name']))
-
-        return list(includes)
-
     def ensure_path_exists(self) -> None:
         if not os.path.exists(self.path):
             os.makedirs(self.path)
 
     def add_filters(self) -> None:
-        self.env.filters['format_class_name'] = lambda value: value[0].upper() + value[1:]
-        self.env.filters['format_method_name_get'] = lambda value: value[0].lower() + value[1:]
-        self.env.filters['format_method_name_set'] = lambda value: value[0].lower() + value[1:]
-        self.env.filters['format_method_name_is_present'] = lambda value: 'is' + value[0].upper() + value[1:] + 'Present'
-        self.env.filters['format_method_name_reset'] = lambda value: value[0].lower() + value[1:] + 'Reset'
-        self.env.filters['format_method_name_length'] = lambda value: value[0].lower() + value[1:] + 'Length'
-        self.env.filters['format_method_name_get_count'] = lambda value: value[0].lower() + value[1:] + 'Count'
-        self.env.filters['format_constant_name'] = lambda value: 'k' + value[0].upper() + value[1:]
-        self.env.filters['replace_keyword']  = Generator.filter_replace_keyword
+        self.env.filters['fmt_class_type'] = lambda s: s[0].upper() + s[1:]
+        self.env.filters['fmt_class_ref'] = lambda s: s[0].upper() + s[1:] + 'Ref'
+        self.env.filters['fmt_class_message'] = lambda s: s[0].upper() + s[1:]
+        self.env.filters['fmt_class_group'] = lambda s: s[0].upper() + s[1:] + 'Group'
+        self.env.filters['fmt_class_data'] = lambda s: s[0].upper() + s[1:] + 'Data'
+        self.env.filters['fmt_enum_value'] = lambda s: s
+        self.env.filters['fmt_header_name'] = lambda s: s + '.h'
+        self.env.filters['replace_keyword']  = Generator.replace_keyword
 
     @staticmethod
-    def filter_replace_keyword(value: str) -> str:
+    def replace_keyword(value: str) -> str:
         return {
             'int8':         'std::int8_t',
             'int16':        'std::int16_t',

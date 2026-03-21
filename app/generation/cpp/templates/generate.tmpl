@@ -1,0 +1,1158 @@
+{% set messageHeader = schema.header_type %}
+{% set blockLength = (messageHeader.contained_types | selectattr('name', 'equalto', 'blockLength') | first ) %}
+{% set templateId = (messageHeader.contained_types | selectattr('name', 'equalto', 'templateId') | first ) %}
+{% set schemaId = (messageHeader.contained_types | selectattr('name', 'equalto', 'schemaId') | first ) %}
+{% set version = (messageHeader.contained_types | selectattr('name', 'equalto', 'version') | first ) %}
+
+{% set block_length_cpp_t = blockLength.primitive_type.name | replace_keyword %}
+{% set template_id_cpp_t = templateId.primitive_type.name | replace_keyword %}
+{% set schema_id_cpp_t = schemaId.primitive_type.name | replace_keyword %}
+{% set version_cpp_t = version.primitive_type.name | replace_keyword %}
+
+{# ------------------------------------ #}
+
+{% macro meta_decl() %}
+template <std::size_t N>
+struct CtStr {
+    char data[N];
+    consteval CtStr(char const* str) noexcept {
+        std::copy_n(str, N, data);
+    }
+    [[nodiscard]] constexpr operator std::string_view() const noexcept {
+        return std::string_view(data, N - 1);
+    }
+};
+template <std::size_t N>
+CtStr(char const (&)[N]) -> CtStr<N>;
+
+template <typename... T>
+struct TypeList {};
+{%- endmacro %}
+
+{% macro swap_byte_order(val, size) %}
+{% if schema.byte_order == 'littleEndian' %}
+if constexpr (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) {
+{% elif schema.byte_order == 'bigEndian' %}
+if constexpr (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) {
+{% endif %}
+    {% if size == 8 %}
+    {{ val }} = __builtin_bswap64({{ val }});
+    {% elif size == 4 %}
+    {{ val }} = __builtin_bswap32({{ val }});
+    {% elif size == 2 %}
+    {{ val }} = __builtin_bswap16({{ val }});
+    {% else %}
+    // fu
+    {% endif %}
+}
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro enum_decl(type) %}
+{% set class_cpp_t = type.name | fmt_class_type %}
+{% set enc_cpp_t = type.encoding_type.name | replace_keyword %}
+{% set is_char_base = type.encoding_type.name == 'char' %}
+enum class {{ class_cpp_t }} : {{ enc_cpp_t }} {
+{% for valid_value in type.valid_values %}
+    {% if is_char_base %}
+    {{ valid_value.name | fmt_enum_value }} = '{{ valid_value.value }}',
+    {% else %}
+    {{ valid_value.name | fmt_enum_value }} = {{ valid_value.value }},
+    {% endif %}
+{% endfor %}
+    SBE_NULL = {{ type.null_value | replace_keyword }}
+};
+static_assert(sizeof({{ class_cpp_t }}) == {{ type.encoded_length }});
+
+template <typename CharT, typename Traits>
+{% if type.inplace %}friend{% else %}inline{% endif %} std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& os, {{ class_cpp_t }} value) {
+    switch (value) {
+    {% for valid_value in type.valid_values %}
+    case {{ class_cpp_t }}::{{ valid_value.name | fmt_enum_value }}: os << "{{ valid_value.name }}"; break;
+    {% endfor %}
+    case {{ class_cpp_t }}::SBE_NULL: os << "NULL"; break;
+    default: os << "INVALID(" << (int)static_cast<{{ enc_cpp_t }}>(value) << ")"; break;
+    }
+    return os;
+}
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro set_decl(type) %}
+{% set class_cpp_t = type.name | fmt_class_type %}
+{% set enc_cpp_t = type.encoding_type.name | replace_keyword %}
+class {{ class_cpp_t }} {
+private:
+    {{ enc_cpp_t }} value_ = 0;
+
+public:
+{% for choice in type.choices %}
+    {% set choice_bit = 'k' ~ choice.name[0].upper() ~ choice.name[1:] ~ 'Bit' %}
+    static constexpr auto {{ choice_bit }} = {{ enc_cpp_t }}(1 << {{ choice.value }}u);
+{% endfor %}
+
+    constexpr {{ class_cpp_t }}() = default;
+
+    constexpr {{ class_cpp_t }}({{ enc_cpp_t }} value) noexcept
+        : value_{value}
+    {}
+
+    [[nodiscard]] constexpr auto rawValue() const noexcept -> {{ enc_cpp_t }} {
+        return value_;
+    }
+
+    constexpr void setRawValue({{ enc_cpp_t }} value) noexcept {
+        value_ = value;
+    }
+
+    constexpr {{ class_cpp_t }}& reset() noexcept {
+        value_ = 0;
+        return *this;
+    }
+{% for choice in type.choices %}
+    {% set choice_method = choice.name[0].lower() ~ choice.name[1:] %}
+    {% set choice_bit = 'k' ~ choice.name[0].upper() ~ choice.name[1:] ~ 'Bit' %}
+
+    [[nodiscard]] constexpr auto {{ choice_method }}() noexcept -> bool {
+        return {{ choice_bit }} == ({{ choice_bit }} & value_);
+    }
+
+    constexpr {{ class_cpp_t }}& {{ choice_method }}(bool value) noexcept {
+        value_ = value
+            ? (value_ | {{ choice_bit }})
+            : (value_ & ~{{ choice_bit }})
+        ;
+        return *this;
+    }
+{% endfor %}
+
+    template <typename CharT, typename Traits>
+    friend std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& os, {{ class_cpp_t }} value) {
+        os << '[';
+{% set count = type.choices | length %}
+{% if count > 1 %}
+        bool atLeastOnePrinter = false;
+{% endif %}
+{% for choice in type.choices %}
+    {% set choice_method = choice.name[0].lower() ~ choice.name[1:] %}
+        if (value.{{ choice_method }}()) {
+    {% if not loop.first and count > 1 %}
+            if (atLeastOnePrinter) {
+                os << ", ";
+            }
+    {% endif %}
+            os << "{{ choice.name }}";
+    {% if not loop.last and count > 1 %}
+            atLeastOnePrinter = true;
+    {% endif %}
+        }
+{% endfor %}
+        os << ']';
+        return os;
+    }
+};
+
+static_assert(sizeof({{ class_cpp_t }}) == {{ type.encoded_length }});
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro composite_decl(type) %}
+{% set class_cpp_t = type.name | fmt_class_type %}
+class {{ class_cpp_t }} {
+private:
+    std::byte* bufferPtr_{nullptr};
+    {{ version_cpp_t }} actingVersion_{ {{- schema.version }}};
+
+public:
+{% for contained_type in type.contained_types if contained_type.inplace %}
+    {% if contained_type.token == 'enum' %}
+    {{ enum_decl(contained_type) | indent(4) }}
+
+    {% elif contained_type.token == 'set' %}
+    {{ set_decl(contained_type) | indent(4) }}
+
+    {% elif contained_type.token == 'composite' %}
+    {{ composite_decl(contained_type) | indent(4) }}
+
+    {% endif %}
+{% endfor %}
+    constexpr {{ class_cpp_t }}() = default;
+
+    constexpr {{ class_cpp_t }}(std::byte* bufferPtr, {{ version_cpp_t }} actingVersion = {{ schema.version }}) noexcept
+        : bufferPtr_{bufferPtr}
+        , actingVersion_{actingVersion}
+    {}
+
+    [[nodiscard]] constexpr auto actingVersion() const noexcept -> {{ version_cpp_t }} {
+        return actingVersion_;
+    }
+
+    [[nodiscard]] static constexpr auto sbeCompositeName() noexcept -> char const* {
+        return "{{ type.name }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbeEncodedLength() noexcept -> std::size_t {
+        return {{ type.encoded_length }};
+    }
+{% for contained_type in type.contained_types %}
+    {% if contained_type.token == 'type' %}
+
+    {{ type_ref_decl(contained_type) | indent(4) }}
+    {% elif contained_type.token == 'enum' %}
+
+    {{ enum_ref_decl(contained_type) | indent(4) }}
+    {% elif contained_type.token == 'set' %}
+
+    {{ set_ref_decl(contained_type) | indent(4) }}
+    {% elif contained_type.token == 'composite' %}
+
+    {{ composite_ref_decl(contained_type) | indent(4) }}
+    {% endif %}
+{% endfor %}
+
+    {{ meta_decl() | indent(4) }}
+
+    using Fields = TypeList<
+{% for contained_type in type.contained_types %}
+    {% set contained_type_ref_name = contained_type.reference_name | fmt_class_ref %}
+        {{ contained_type_ref_name }}{% if not loop.last %},{% endif +%}
+{% endfor %}
+    >;
+
+    template <std::size_t I>
+    [[nodiscard]] constexpr auto get() const noexcept {
+{% for contained_type in type.contained_types %}
+    {% set contained_type_ref_name = contained_type.reference_name | fmt_class_ref %}
+    {% if loop.first %}
+        if constexpr (I == {{ loop.index0 }}) {
+    {% else %}
+        } else if constexpr (I == {{ loop.index0 }}) {
+    {% endif %}
+            return {{ contained_type_ref_name }}{bufferPtr_, actingVersion_};
+{% endfor %}
+        } else {
+            static_assert(I < 0, "Field index out of range ({{ class_cpp_t }})");
+        }
+    }
+
+    template <CtStr N>
+    [[nodiscard]] constexpr auto get() const noexcept {
+        constexpr auto name = static_cast<std::string_view>(N);
+{% for contained_type in type.contained_types %}
+    {% set contained_type_ref_name = contained_type.reference_name | fmt_class_ref %}
+    {% if loop.first %}
+        if constexpr (name == {{ contained_type_ref_name }}::sbeRefName()) {
+    {% else %}
+        } else if constexpr (name == {{ contained_type_ref_name }}::sbeRefName()) {
+    {% endif %}
+            return {{ contained_type_ref_name }}{bufferPtr_, actingVersion_};
+{% endfor %}
+        } else {
+            static_assert(name.size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
+        }
+    }
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro message_decl(message) %}
+{% set class_cpp_t = message.name | fmt_class_message %}
+class {{ class_cpp_t }} {
+private:
+    std::span<std::byte> buffer_;
+    std::size_t offset_{0};
+    std::size_t position_{0};
+    {{ block_length_cpp_t }} actingBlockLength_{ {{- message.block_length }}};
+    {{ version_cpp_t }} actingVersion_{ {{- schema.version }}};
+
+public:
+    constexpr {{ class_cpp_t }}() = default;
+
+    constexpr {{ class_cpp_t }}(std::span<std::byte> buffer, std::size_t offset = 0, {{ block_length_cpp_t }} actingBlockLength = {{ message.block_length }}, {{ version_cpp_t }} actingVersion = {{ schema.version }})
+        : buffer_{buffer}
+        , offset_{offset}
+        , position_{offset + actingBlockLength}
+        , actingBlockLength_{actingBlockLength}
+        , actingVersion_{actingVersion}
+    {
+        if (position_ > buffer_.size()) [[unlikely]] {
+          throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
+        }
+    }
+
+    [[nodiscard]] static constexpr auto wrapAndApplyHeader(std::span<std::byte> buffer, std::size_t offset = 0) -> {{ class_cpp_t }} {
+        {% set message_header_cpp_t = messageHeader.name | fmt_class_type %}
+        if (offset + {{ messageHeader.encoded_length }} > buffer.size()) [[unlikely]] {
+            throw std::runtime_error{"not enought space for \"{{ message_header_cpp_t }}\""};
+        }
+        auto header = {{ message_header_cpp_t }}(buffer.data());
+        header.get<"blockLength">().value({{ message.block_length }});
+        header.get<"templateId">().value({{ message.id }});
+        header.get<"schemaId">().value({{ schema.id }});
+        header.get<"version">().value({{ schema.version }});
+
+        return {{ class_cpp_t }}(buffer, offset + {{ messageHeader.encoded_length }}, {{ message.block_length }}, {{ schema.version }});
+    }
+
+    [[nodiscard]] constexpr auto buffer() const noexcept -> std::span<std::byte> {
+        return buffer_;
+    }
+
+    [[nodiscard]] constexpr auto offset() const noexcept -> std::size_t {
+        return offset_;
+    }
+
+    [[nodiscard]] constexpr auto position() const noexcept -> std::size_t {
+        return position_;
+    }
+
+    [[nodiscard]] constexpr auto encodedSize() const noexcept -> std::size_t {
+        return position_ - offset_;
+    }
+
+    [[nodiscard]] constexpr auto actingBlockLength() const noexcept -> {{ block_length_cpp_t }} {
+        return actingBlockLength_;
+    }
+
+    [[nodiscard]] constexpr auto actingVersion() const noexcept -> {{ version_cpp_t }} {
+        return actingVersion_;
+    }
+
+    [[nodiscard]] static constexpr auto sbeMessageName() noexcept -> char const* {
+        return "{{ message.name }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbeBlockLength() noexcept -> {{ block_length_cpp_t }} {
+        return {{ message.block_length }};
+    }
+
+    [[nodiscard]] static constexpr auto sbeTemplateId() noexcept -> {{ template_id_cpp_t }} {
+        return {{ message.id }};
+    }
+
+    [[nodiscard]] static constexpr auto sbeSchemaId() noexcept -> {{ schema_id_cpp_t }} {
+        return {{ schema.id }};
+    }
+
+    [[nodiscard]] static constexpr auto sbeVersion() noexcept -> {{ version_cpp_t }} {
+        return {{ schema.version }};
+    }
+{% for field in message.fields %}
+    {% if field.token == 'group' %}
+
+    {{ group_decl(field) | indent(4) }}
+    {% elif field.token == 'data' %}
+
+    {{ data_decl(field) | indent(4) }}
+    {% endif %}
+{% endfor %}
+{% for field in message.fields %}
+    {% if field.token == 'field' and field.type.token == 'type' %}
+
+    {{ type_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'field' and field.type.token == 'enum' %}
+
+    {{ enum_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'field' and field.type.token == 'set' %}
+
+    {{ set_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'field' and field.type.token == 'composite' %}
+
+    {{ composite_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'group' %}
+
+    {{ group_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'data' %}
+
+    {{ data_ref_decl(field) | indent(4) }}
+    {% endif %}
+{% endfor %}
+
+    {{ meta_decl() | indent(4) }}
+
+    using Fields = TypeList<
+{% for field in message.fields %}
+    {% set field_ref_name = field.name | fmt_class_ref %}
+        {{ field_ref_name }}{% if not loop.last %},{% endif +%}
+{% endfor %}
+    >;
+
+    template <std::size_t I>
+    [[nodiscard]] constexpr auto get() noexcept {
+{% for field in message.fields %}
+    {% set field_ref_name = field.name | fmt_class_ref %}
+    {% if loop.first %}
+        if constexpr (I == {{ loop.index0 }}) {
+    {% else %}
+        } else if constexpr (I == {{ loop.index0 }}) {
+    {% endif %}
+    {% if field.token == 'field' %}
+            return {{ field_ref_name }}{buffer_.data() + offset_, actingVersion_};
+    {% elif field.token == 'group' %}
+            return {{ field_ref_name }}{buffer_, &position_, actingVersion_};
+    {% elif field.token == 'data' %}
+            return {{ field_ref_name }}{buffer_, &position_, actingVersion_};
+    {% endif %}
+{% endfor %}
+        } else {
+            static_assert(I < 0, "Field index out of range ({{ class_cpp_t }})");
+        }
+    }
+
+    template <CtStr N>
+    [[nodiscard]] constexpr auto get() noexcept {
+        constexpr auto name = static_cast<std::string_view>(N);
+{% for field in message.fields %}
+    {% set field_ref_name = field.name | fmt_class_ref %}
+    {% if loop.first %}
+        if constexpr (name == {{ field_ref_name }}::sbeRefName()) {
+    {% else %}
+        } else if constexpr (name == {{ field_ref_name }}::sbeRefName()) {
+    {% endif %}
+    {% if field.token == 'field' %}
+            return {{ field_ref_name }}{buffer_.data() + offset_, actingVersion_};
+    {% elif field.token == 'group' %}
+            return {{ field_ref_name }}{buffer_, &position_, actingVersion_};
+    {% elif field.token == 'data' %}
+            return {{ field_ref_name }}{buffer_, &position_, actingVersion_};
+    {% endif %}
+{% endfor %}
+        } else {
+            static_assert(name.size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
+        }
+    }
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro group_decl(group) %}
+{% set class_cpp_t = group.name | fmt_class_group %}
+{% set dimension = group.dimension_type %}
+{% set dimension_cpp_t = dimension.name | fmt_class_type %}
+{% set numInGroup = (group.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) -%}
+{% set num_in_group_cpp_t = numInGroup.primitive_type.name | replace_keyword %}
+class {{ class_cpp_t }} {
+private:
+    std::span<std::byte> buffer_;
+    std::size_t initialPosition_{0};
+    std::size_t* positionPtr_{nullptr};
+    {{ block_length_cpp_t }} actingBlockLength_{ {{- group.block_length }}};
+    {{ version_cpp_t }} actingVersion_{ {{- schema.version }}};
+    {{ num_in_group_cpp_t }} count_{0};
+    {{ num_in_group_cpp_t }} index_{0};
+    std::size_t offset_{0};
+
+public:
+    constexpr {{ class_cpp_t }}(std::span<std::byte> buffer, std::size_t* positionPtr, {{ version_cpp_t }} actingVersion = {{ schema.version }})
+        : buffer_{buffer}
+        , initialPosition_{*positionPtr}
+        , positionPtr_{positionPtr}
+        , actingVersion_{actingVersion}
+    {
+        if (*positionPtr_ + {{ dimension.encoded_length }} > buffer_.size()) {
+          throw std::runtime_error{"not enought space for \"{{ dimension_cpp_t }}\""};
+        }
+        auto const dimension = {{ dimension_cpp_t }}(buffer_.data() + *positionPtr_);
+        actingBlockLength_ = dimension.get<"blockLength">().value();
+        count_ = dimension.get<"numInGroup">().value();
+        *positionPtr_ = *positionPtr_ + {{ dimension.encoded_length }};
+    }
+
+    [[nodiscard]] static constexpr auto sbeBlockLength() noexcept -> {{ block_length_cpp_t }} {
+        return {{ group.block_length }};
+    }
+
+    [[nodiscard]] constexpr auto actingBlockLength() const noexcept -> {{ block_length_cpp_t }} {
+        return actingBlockLength_;
+    }
+
+    [[nodiscard]] constexpr auto actingVersion() const noexcept -> {{ version_cpp_t }} {
+        return actingVersion_;
+    }
+
+    [[nodiscard]] constexpr auto count() const noexcept -> {{ num_in_group_cpp_t }} {
+        return count_;
+    }
+
+    constexpr auto reset({{ num_in_group_cpp_t }} count) -> {{ class_cpp_t }}& {
+        if (count > ({{ numInGroup.max_value | replace_keyword }})) [[unlikely]] {
+            throw std::runtime_error{"count out of allowed range in group \"{{ class_cpp_t }}\""};
+        }
+        count_ = count;
+        index_ = 0;
+        actingBlockLength_ = {{ group.block_length }};
+
+        auto dimension = {{ dimension_cpp_t }}(buffer_.data() + *positionPtr_);
+        dimension.get<"blockLength">().value({{ group.block_length }});
+        dimension.get<"numInGroup">().value(count_);
+
+        *positionPtr_ = initialPosition_ + {{ dimension.encoded_length }};
+
+        return *this;
+    }
+
+    [[nodiscard]] constexpr auto hasNext() const noexcept -> bool {
+        return index_ < count_;
+    }
+
+    constexpr auto next() -> {{ class_cpp_t }}& {
+        if (index_ >= count_) [[unlikely]] {
+            throw std::runtime_error{"index out of allowed range for group \"{{ class_cpp_t }}\""};
+        }
+        offset_ = *positionPtr_;
+        if ((offset_ + actingBlockLength_) > buffer_.size()) [[unlikely]] {
+            throw std::runtime_error{"not enought space for next entry for group \"{{ class_cpp_t }}\""};
+        }
+        *positionPtr_ = offset_ + actingBlockLength_;
+        ++index_;
+        return *this;
+    }
+{% for field in group.fields %}
+    {% if field.token == 'group' %}
+
+    {{ group_decl(field) | indent(4) }}
+    {% elif field.token == 'data' %}
+
+    {{ data_decl(field) | indent(4) }}
+    {% endif %}
+{% endfor %}
+{% for field in group.fields %}
+    {% if field.token == 'field' and field.type.token == 'type' %}
+
+    {{ type_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'field' and field.type.token == 'enum' %}
+
+    {{ enum_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'field' and field.type.token == 'set' %}
+
+    {{ set_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'field' and field.type.token == 'composite' %}
+
+    {{ composite_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'group' %}
+
+    {{ group_ref_decl(field) | indent(4) }}
+    {% elif field.token == 'data' %}
+
+    {{ data_ref_decl(field) | indent(4) }}
+    {% endif %}
+{% endfor %}
+
+    {{ meta_decl() | indent(4) }}
+
+    using Fields = TypeList<
+{% for field in group.fields %}
+    {% set field_ref_name = field.name | fmt_class_ref %}
+        {{ field_ref_name }}{% if not loop.last %},{% endif +%}
+{% endfor %}
+    >;
+
+    template <std::size_t I>
+    [[nodiscard]] constexpr auto get() noexcept {
+{% for field in group.fields %}
+    {% set field_ref_name = field.name | fmt_class_ref %}
+    {% if loop.first %}
+        if constexpr (I == {{ loop.index0 }}) {
+    {% else %}
+        } else if constexpr (I == {{ loop.index0 }}) {
+    {% endif %}
+    {% if field.token == 'field' %}
+            return {{ field_ref_name }}{buffer_.data() + offset_, actingVersion_};
+    {% elif field.token == 'group' %}
+            return {{ field_ref_name }}{buffer_, positionPtr_, actingVersion_};
+    {% elif field.token == 'data' %}
+            return {{ field_ref_name }}{buffer_, positionPtr_, actingVersion_};
+    {% endif %}
+{% endfor %}
+        } else {
+            static_assert(I < 0, "Field index out of range ({{ class_cpp_t }})");
+        }
+    }
+
+    template <CtStr N>
+    [[nodiscard]] constexpr auto get() noexcept {
+        constexpr auto name = static_cast<std::string_view>(N);
+{% for field in group.fields %}
+    {% set field_ref_name = field.name | fmt_class_ref %}
+    {% if loop.first %}
+        if constexpr (name == {{ field_ref_name }}::sbeRefName()) {
+    {% else %}
+        } else if constexpr (name == {{ field_ref_name }}::sbeRefName()) {
+    {% endif %}
+    {% if field.token == 'field' %}
+            return {{ field_ref_name }}{buffer_.data() + offset_, actingVersion_};
+    {% elif field.token == 'group' %}
+            return {{ field_ref_name }}{buffer_, positionPtr_, actingVersion_};
+    {% elif field.token == 'data' %}
+            return {{ field_ref_name }}{buffer_, positionPtr_, actingVersion_};
+    {% endif %}
+{% endfor %}
+        } else {
+            static_assert(name.size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
+        }
+    }
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro data_decl(data) %}
+{% set class_cpp_t = data.name | fmt_class_data %}
+{% set length = (data.type.contained_types | selectattr('name', 'equalto', 'length') | first) %}
+{% set varData = (data.type.contained_types | selectattr('name', 'equalto', 'varData') | first) %}
+{% if varData.character_encoding and varData.primitive_type.size == 1 %}
+    {% set enc_cpp_t = 'char' %}
+    {% set value_cpp_t = 'std::string_view' %}
+{% else %}
+    {% set enc_cpp_t = varData.primitive_type.name | replace_keyword %}
+    {% set value_cpp_t = 'std::span<' ~ enc_cpp_t ~ ' const>' %}
+{% endif %}
+{% set length_cpp_t = length.primitive_type.name | replace_keyword %}
+class {{ class_cpp_t }} {
+private:
+    std::span<std::byte> buffer_;
+    std::size_t initialPosition_{0};
+    std::size_t* positionPtr_{nullptr};
+    {{ version_cpp_t }} actingVersion_{ {{- schema.version }}};
+
+public:
+    constexpr {{ class_cpp_t }}(std::span<std::byte> buffer, std::size_t* positionPtr, {{ version_cpp_t }} actingVersion = {{ schema.version }})
+        : buffer_{buffer}
+        , initialPosition_{*positionPtr}
+        , positionPtr_{positionPtr}
+        , actingVersion_{actingVersion}
+    {
+        if (*positionPtr_ + {{ length.encoded_length }} > buffer_.size()) {
+          throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
+        }
+    }
+
+    [[nodiscard]] constexpr auto actingVersion() const noexcept -> {{ version_cpp_t }} {
+        return actingVersion_;
+    }
+
+    [[nodiscard]] constexpr auto value() -> {{ value_cpp_t }} {
+        auto const length = *std::bit_cast<{{ length_cpp_t }} const*>(buffer_.data() + initialPosition_);
+        auto const data = std::bit_cast<{{ enc_cpp_t }} const*>(buffer_.data() + initialPosition_ + {{ length.encoded_length }});
+{% if varData.primitive_type.size == 1 %}
+        auto const position = initialPosition_ + {{ length.encoded_length }} + length;
+{% else %}
+        auto const position = initialPosition_ + {{ length.encoded_length }} + length * {{ varData.primitive_type.size }};
+{% endif %}
+        if (position > buffer_.size()) [[unlikely]] {
+            throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
+        }
+        *positionPtr_ = position;
+        return {{ value_cpp_t }}{data, length};
+    }
+
+    constexpr auto value({{ value_cpp_t }} val) -> {{ class_cpp_t }}& {
+        *std::bit_cast<{{ length_cpp_t }}*>(buffer_.data() + initialPosition_) = val.size();
+        auto data = std::bit_cast<{{ enc_cpp_t }}*>(buffer_.data() + initialPosition_ + {{ length.encoded_length }});
+{% if varData.primitive_type.size == 1 %}
+        auto const position = initialPosition_ + {{ length.encoded_length }} + val.size();
+{% else %}
+        auto const position = initialPosition_ + {{ length.encoded_length }} + val.size() * {{ varData.primitive_type.size }};
+{% endif %}
+        if (position > buffer_.size()) [[unlikely]] {
+            throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
+        }
+        std::copy_n(val.data(), val.size(), data);
+        *positionPtr_ = position;
+        return *this;
+    }
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro type_ref_decl(entry) %}
+{% set type = entry.type if entry.token == 'field' else entry %}
+{% set ref_name = entry.name if entry.token == 'field' else entry.reference_name %}
+{% set class_cpp_t = ref_name | fmt_class_ref %}
+{% set enc_cpp_t = type.primitive_type.name | replace_keyword %}
+{% if type.length > 1 %}
+    {% if type.primitive_type.name == 'char' %}
+        {% set value_cpp_t = 'std::string_view' %}
+    {% else %}
+        {% set value_cpp_t = 'std::span<' ~ enc_cpp_t ~ ' const>' %}
+    {% endif %}
+{% else %}
+    {% set value_cpp_t = enc_cpp_t %}
+{% endif %}
+{% set is_optional = entry.presence == 'optional' %}
+{% set is_required = entry.presence == 'required' %}
+{% set is_constant = entry.presence == 'constant' %}
+struct {{ class_cpp_t }} {
+    using value_type = {{ value_cpp_t }};
+{% if is_required or is_optional %}
+
+    std::byte* bufferPtr = nullptr;
+
+    {# constructor #}
+    constexpr {{ class_cpp_t }}(std::byte* blockBufferPtr, [[maybe_unused]] {{ version_cpp_t }} actingVersion = {{ schema.version }}) noexcept
+        : bufferPtr{blockBufferPtr + {{ entry.offset }}}
+    {}
+{% elif is_constant %}
+
+    {# constructor #}
+    constexpr {{ class_cpp_t }}([[maybe_unused]] std::byte* blockBuffer, [[maybe_unused]] {{ version_cpp_t }} actingVersion = {{ schema.version }}) noexcept
+    {}
+{% endif %}
+
+    [[nodiscard]] static constexpr auto sbeRefName() noexcept -> char const* {
+        return "{{ ref_name }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbePresence() noexcept -> char const* {
+        return "{{ entry.presence }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbeLength() noexcept -> std::size_t {
+        return {{ type.length }};
+    }
+
+    [[nodiscard]] static constexpr auto sbeSinceVersion() noexcept -> {{ version_cpp_t }} {
+        return {{ entry.since_version }};
+    }
+{% if entry.character_encoding %}
+
+    {# characterEncoding if present #}
+    [[nodiscard]] static constexpr auto sbeCharacterEncoding() noexcept -> char const* {
+        return "{{ type.character_encoding }}";
+    }
+{% endif %}
+
+    [[nodiscard]] static constexpr auto nullValue() noexcept -> {{ enc_cpp_t }} {
+        return {{ type.null_value | replace_keyword }};
+    }
+
+    [[nodiscard]] static constexpr auto minValue() noexcept -> {{ enc_cpp_t }} {
+        return {{ type.min_value | replace_keyword }};
+    }
+
+    [[nodiscard]] static constexpr auto maxValue() noexcept -> {{ enc_cpp_t }} {
+        return {{ type.max_value | replace_keyword }};
+    }
+{% if is_required or is_optional %}
+
+    {# data() #}
+    [[nodiscard]] constexpr auto data() const noexcept -> {{ enc_cpp_t }} const* {
+        return std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr);
+    }
+
+    {# data() #}
+    [[nodiscard]] constexpr auto data() noexcept -> {{ enc_cpp_t }}* {
+        return std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr);
+    }
+
+    {# data0() #}
+    // First byte-swapped item of data()
+    [[nodiscard]] constexpr auto data0() const noexcept -> {{ enc_cpp_t }} {
+    {% if type.primitive_type.size != 1 %}
+        auto val = this->data()[0];
+        {{ swap_byte_order('val', type.primitive_type.size) | indent(8) }}
+        return val;
+    {% else %}
+        return this->data()[0];
+    {% endif %}
+    }
+{% elif is_constant %}
+
+    {# data() #}
+    [[nodiscard]] constexpr auto data() const noexcept -> {{ enc_cpp_t }} const* {
+    {% if type.primitive_type.name == 'char' and type.length == 1 %}
+        static constexpr auto storage = '{{ type.const_value }}';
+        return &storage;
+    {% elif type.primitive_type.name == 'char' and type.length > 1 %}
+        static constexpr auto storage = std::string_view("{{ type.const_value }}");
+        return storage.data();
+    {% elif type.length == 1 %}
+        static constexpr auto storage = {{ enc_cpp_t }}({{ type.const_value }});
+        return &storage;
+    {% elif type.length > 1 %}
+        static_assert(false, "not implemented for encoding '{{ type.const_value }}'");
+    {% endif %}
+    }
+{% endif %}
+{% if is_required or is_constant %}
+
+    {# present() #}
+    [[nodiscard]] constexpr auto present() const noexcept -> bool {
+        return true;
+    }
+{% elif is_optional %}
+
+    {# present() #}
+    [[nodiscard]] constexpr auto present() const noexcept -> bool {
+    {% if type.primitive_type.name == 'float' and type.null_value == 'FLOAT_NULL' %}
+        return !std::isnan(this->data0());
+    {% elif type.primitive_type.name == 'double' and type.null_value == 'DOUBLE_NULL' %}
+        return !std::isnan(*this->data0());
+    {% else %}
+        return this->data0() != {{ enc_cpp_t }}({{ type.null_value | replace_keyword }});
+    {% endif %}
+    }
+{% endif %}
+{% if (is_required or is_optional) and type.length == 1 %}
+
+    {# value() #}
+    [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
+        return this->data0();
+    }
+{% elif (is_required or is_optional) and type.primitive_type.name == 'char' and type.length > 1 %}
+
+    {# value() #}
+    [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
+        auto const ptr = this->data();
+        std::size_t length = 0;
+        for (; length < {{ type.length }} && *(ptr + length) != '\0'; ++length) {}
+        return {{ value_cpp_t }}{ptr, length};
+    }
+{% elif (is_required or is_optional) and type.length > 1 %}
+
+    {# value() #}
+    [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
+        return {{ value_cpp_t }}{this->data(), {{ type.length }}};
+    }
+{% elif is_constant and type.length == 1 %}
+
+    {# value() #}
+    [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
+        return *this->data();
+    }
+{% elif is_constant and type.length > 1 %}
+
+    {# value() #}
+    [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
+        return {{ value_cpp_t }}{this->data(), {{ type.length }}};
+    }
+{% endif %}
+{% if (is_required or is_optional) and type.length == 1 %}
+
+    {# value(val) #}
+    constexpr auto value({{ value_cpp_t }} val) noexcept -> {{ class_cpp_t }}& {
+    {% if type.primitive_type.size != 1 %}
+        {{ swap_byte_order('val', type.primitive_type.size) | indent(8) }}
+    {% endif %}
+        *this->data() = val;
+        return *this;
+    }
+{% elif (is_required or is_optional) and type.primitive_type.name == 'char' and type.length > 1 %}
+
+    {# value(val) #}
+    constexpr auto value({{ value_cpp_t }} val) -> {{ class_cpp_t }}& {
+        if (val.size() > {{ type.length }}) [[unlikely]] {
+            throw std::runtime_error{"text too long to encode (\"{{ class_cpp_t }}\")"};
+        }
+        std::copy_n(val.data(), val.size(), this->data());
+        if (val.size() < {{ type.length }}) {
+            this->data()[val.size()] = '\0';
+        }
+        return *this;
+    }
+{% elif (is_required or is_optional) and type.length > 1 %}
+
+    {# value(val) #}
+    constexpr auto value({{ value_cpp_t }} val) -> {{ class_cpp_t }}& {
+        if (val.size() != {{ type.length }}) [[unlikely]] {
+            throw std::runtime_error{"unexpected data length to encode (\"{{ class_cpp_t }}\")"};
+        }
+        std::copy_n(val.data(), val.size(), this->data());
+        return *this;
+    }
+{% endif %}
+{% if is_optional %}
+
+    {# reset() #}
+    constexpr auto reset() noexcept -> {{ class_cpp_t }}& {
+        *this->data() = {{ enc_cpp_t }}({{ type.null_value | replace_keyword }});
+        return *this;
+    }
+{% endif %}
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro enum_ref_decl(entry) %}
+{% set type = entry.type if entry.token == 'field' else entry %}
+{% set ref_name = entry.name if entry.token == 'field' else entry.reference_name %}
+{% set class_cpp_t = ref_name | fmt_class_ref %}
+{% set enc_cpp_t = type.encoding_type.name | replace_keyword %}
+{% set value_cpp_t = type.name | fmt_class_type %}
+{% set is_optional = entry.presence == 'optional' %}
+{% set is_required = entry.presence == 'required' %}
+{% set is_constant = entry.presence == 'constant' %}
+struct {{ class_cpp_t }} {
+    using value_type = {{ value_cpp_t }};
+{% if is_required or is_optional %}
+
+    std::byte* bufferPtr = nullptr;
+
+    {# constructor #}
+    constexpr {{ class_cpp_t }}(std::byte* blockBufferPtr, [[maybe_unused]] {{ version_cpp_t }} actingVersion = {{ schema.version }}) noexcept
+        : bufferPtr{blockBufferPtr + {{ entry.offset }}}
+    {}
+{% elif is_constant %}
+
+    {# constructor #}
+    constexpr {{ class_cpp_t }}([[maybe_unused]] std::byte* blockBufferPtr, [[maybe_unused]] {{ version_cpp_t }} actingVersion = {{ schema.version }}) noexcept
+    {}
+{% endif %}
+
+    [[nodiscard]] static constexpr auto sbeRefName() noexcept -> char const* {
+        return "{{ ref_name }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbePresence() noexcept -> char const* {
+        return "{{ entry.presence }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbeSinceVersion() noexcept -> {{ version_cpp_t }} {
+        return {{ entry.since_version }};
+    }
+{% if is_required or is_optional %}
+
+    {# data() #}
+    [[nodiscard]] constexpr auto data() const noexcept -> {{ enc_cpp_t }} const* {
+        return std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr);
+    }
+
+    {# data() #}
+    [[nodiscard]] constexpr auto data() noexcept -> {{ enc_cpp_t }}* {
+        return std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr);
+    }
+
+    {# data0() #}
+    // First byte-swapped item of data()
+    [[nodiscard]] constexpr auto data0() const noexcept -> {{ enc_cpp_t }} {
+    {% if type.encoding_type.size != 1 %}
+        auto val = this->data()[0];
+        {{ swap_byte_order('val', type.encoding_type.size) | indent(8) }}
+        return val;
+    {% else %}
+        return this->data()[0];
+    {% endif %}
+    }
+{% elif is_constant %}
+
+    {# data() #}
+    [[nodiscard]] constexpr auto data() const noexcept -> {{ enc_cpp_t }} const* {
+        static constexpr auto storage = static_cast<{{ enc_cpp_t }}>({{ value_cpp_t }}::{{ entry.value_ref.split('.')[1] | fmt_enum_value }});
+        return &storage;
+    }
+{% endif %}
+{% if is_required or is_constant %}
+
+    {# present() #}
+    [[nodiscard]] constexpr auto present() const noexcept -> bool {
+        return true;
+    }
+{% elif is_optional %}
+
+    {# present() #}
+    [[nodiscard]] constexpr auto present() const noexcept -> bool {
+        return static_cast<{{ value_cpp_t }}>(this->data0()) != {{ value_cpp_t }}::SBE_NULL;
+    }
+{% endif %}
+{% if is_required or is_optional %}
+
+    {# value() #}
+    [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
+        return static_cast<{{ value_cpp_t }}>(this->data0());
+    }
+{% elif is_constant %}
+
+    {# value() #}
+    [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
+        return static_cast<{{ value_cpp_t }}>(*this->data());
+    }
+{% endif %}
+{% if is_required or is_optional %}
+
+    {# value(val) #}
+    constexpr auto value({{ value_cpp_t }} val) noexcept -> {{ class_cpp_t }}& {
+        *this->data() = static_cast<{{ enc_cpp_t }}>(val);
+    {% if type.encoding_type.size != 1 %}
+        {{ swap_byte_order('*this->data()', type.encoding_type.size) | indent(8) }}
+    {% endif %}
+        return *this;
+    }
+{% endif %}
+{% if is_optional %}
+
+    {# reset() #}
+    constexpr auto reset() noexcept -> {{ class_cpp_t }}& {
+        return this->value({{ value_cpp_t }}::SBE_NULL);
+    }
+{% endif %}
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro set_ref_decl(entry) %}
+{% set type = entry.type if entry.token == 'field' else entry %}
+{% set ref_name = entry.name if entry.token == 'field' else entry.reference_name %}
+{% set class_cpp_t = ref_name | fmt_class_ref %}
+{% set enc_cpp_t = type.encoding_type.name | replace_keyword %}
+{% set value_cpp_t = type.name | fmt_class_type %}
+struct {{ class_cpp_t }} {
+    using value_type = {{ value_cpp_t }};
+
+    std::byte* bufferPtr = nullptr;
+
+    {# constructor #}
+    constexpr {{ class_cpp_t }}(std::byte* blockBufferPtr, [[maybe_unused]] {{ version_cpp_t }} actingVersion = {{ schema.version }}) noexcept
+        : bufferPtr{blockBufferPtr + {{ entry.offset }}}
+    {}
+
+    [[nodiscard]] static constexpr auto sbeRefName() noexcept -> char const* {
+        return "{{ ref_name }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbePresence() noexcept -> char const* {
+        return "{{ entry.presence }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbeSinceVersion() noexcept -> {{ version_cpp_t }} {
+        return {{ entry.since_version }};
+    }
+
+    {# data() #}
+    [[nodiscard]] constexpr auto data() const noexcept -> {{ enc_cpp_t }} const* {
+        return std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr);
+    }
+
+    {# data() #}
+    [[nodiscard]] constexpr auto data() noexcept -> {{ enc_cpp_t }}* {
+        return std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr);
+    }
+
+    {# data0() #}
+    // First byte-swapped item of data()
+    [[nodiscard]] constexpr auto data0() const noexcept -> {{ enc_cpp_t }} {
+    {% if type.encoding_type.size != 1 %}
+        auto val = this->data()[0];
+        {{ swap_byte_order('val', type.encoding_type.size) | indent(8) }}
+        return val;
+    {% else %}
+        return this->data()[0];
+    {% endif %}
+    }
+
+    {# present() #}
+    [[nodiscard]] constexpr auto present() const noexcept -> bool {
+        return true;
+    }
+
+    {# value() #}
+    [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
+        return {{ value_cpp_t }}(this->data0());
+    }
+
+    {# value(val) #}
+    constexpr auto value({{ value_cpp_t }} val) noexcept -> {{ class_cpp_t }}& {
+        *this->data() = val.rawValue();
+    {% if type.encoding_type.size != 1 %}
+        {{ swap_byte_order('*this->data()', type.encoding_type.size) | indent(8) }}
+    {% endif %}
+        return *this;
+    }
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro composite_ref_decl(entry) %}
+{% set type = entry.type if entry.token == 'field' else entry %}
+{% set ref_name = entry.name if entry.token == 'field' else entry.reference_name %}
+{% set class_cpp_t = ref_name | fmt_class_ref %}
+{% set value_cpp_t = type.name | fmt_class_type %}
+{% set mantissa = (type.contained_types | selectattr('name', 'equalto', 'mantissa') | first ) %}
+{% set exponent = (type.contained_types | selectattr('name', 'equalto', 'exponent') | first ) %}
+struct {{ class_cpp_t }} : public {{ value_cpp_t }} {
+    using value_type = {{ value_cpp_t }};
+
+    std::byte* bufferPtr = nullptr;
+
+    {# constructor (required, optional) #}
+    constexpr {{ class_cpp_t }}(std::byte* blockBuffer, [[maybe_unused]] {{ version_cpp_t }} actingVersion = {{ schema.version }}) noexcept
+        : {{ value_cpp_t }}{blockBuffer + {{ entry.offset }}, actingVersion}
+    {}
+
+    [[nodiscard]] static constexpr auto sbeRefName() noexcept -> char const* {
+        return "{{ ref_name }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbePresence() noexcept -> char const* {
+        return "{{ entry.presence }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbeSinceVersion() noexcept -> {{ version_cpp_t }} {
+        return {{ entry.since_version }};
+    }
+
+    [[nodiscard]] constexpr auto present() const noexcept -> bool {
+        return this->get<0>().present();
+    }
+{% if mantissa and exponent %}
+
+    // TODO: convert to decimal/double/etc... ?
+{% endif %}
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro group_ref_decl(entry) %}
+{% set ref_name = entry.name %}
+{% set class_cpp_t = ref_name | fmt_class_ref %}
+{% set group_class_cpp_t = ref_name | fmt_class_group %}
+struct {{ class_cpp_t }} : public {{ group_class_cpp_t }} {
+    using {{ group_class_cpp_t }}::{{ group_class_cpp_t }};
+
+    [[nodiscard]] static constexpr auto sbeRefName() noexcept -> char const* {
+        return "{{ ref_name }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbePresence() noexcept -> char const* {
+        return "{{ entry.presence }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbeSinceVersion() noexcept -> {{ version_cpp_t }} {
+        return {{ entry.since_version }};
+    }
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
+{% macro data_ref_decl(entry) %}
+{% set ref_name = entry.name %}
+{% set class_cpp_t = ref_name | fmt_class_ref %}
+{% set group_class_cpp_t = ref_name | fmt_class_data %}
+struct {{ class_cpp_t }} : public {{ group_class_cpp_t }} {
+    using {{ group_class_cpp_t }}::{{ group_class_cpp_t }};
+
+    [[nodiscard]] static constexpr auto sbeRefName() noexcept -> char const* {
+        return "{{ ref_name }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbePresence() noexcept -> char const* {
+        return "{{ entry.presence }}";
+    }
+
+    [[nodiscard]] static constexpr auto sbeSinceVersion() noexcept -> {{ version_cpp_t }} {
+        return {{ entry.since_version }};
+    }
+};
+{%- endmacro %}
+
+{# ------------------------------------ #}
