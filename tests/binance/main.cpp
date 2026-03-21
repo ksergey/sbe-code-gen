@@ -2,10 +2,12 @@
 // Copyright 2022-present Sergey Kovalevich <inndie@gmail.com>
 // ------------------------------------------------------------
 
-#include <doctest/doctest.h>
-
-#include <fmt/format.h>
-#include <fmt/ranges.h>
+#include <cstddef>
+#include <cstdio>
+#include <iostream>
+#include <span>
+#include <string_view>
+#include <type_traits>
 
 #include "schema.h"
 
@@ -15,119 +17,77 @@ namespace content {
 
 } // namespace content
 
-namespace spot_sbe {
-
-template <typename T>
-void view_set(std::string const& prefix, T value) {
-  fmt::print(stdout, "{}: [", prefix);
-
-  bool first = true;
-  MP_forEach<MP_IndexSeq<MP_Size<typename T::Choices>>>([&](auto I) {
-    auto const name = MP_At<typename T::Choices, MP_SizeT<I>>::first_type::value;
-    auto const bit = MP_At<typename T::Choices, MP_SizeT<I>>::second_type::value;
-    if (value[bit]) {
-      if (!first) {
-        fmt::print(stdout, ", ");
-      }
-      first = false;
-
-      fmt::print(stdout, "{}", name);
+template <typename N>
+std::ostream& operator<<(std::ostream& os, std::span<N const> const& value) {
+    os << '[';
+    bool atLeastOnePrinted{false};
+    for (auto const& v : value) {
+        if (atLeastOnePrinted) {
+            os << ", ";
+        }
+        os << int(v);
+        atLeastOnePrinted = true;
     }
-  });
-
-  fmt::print(stdout, "]\n");
+    os << ']';
+    return os;
 }
 
-template <typename F>
-void view(std::string prefix, F entry) {
-  if constexpr (std::derived_from<F, SBEType_Type>) {
-    if (entry.present()) {
-      fmt::print(stdout, "{}: {}\n", prefix, entry.value());
-    } else {
-      fmt::print(stdout, "{}: N/A\n", prefix);
+struct Printer {
+    template <typename FieldT>
+        requires(requires { std::declval<FieldT>().value(); })
+    static void print(std::ostream& os, FieldT field, std::string_view parent) {
+        if (!parent.empty()) {
+            os << parent << '.';
+        }
+        os << field.sbeRefName() << ": ";
+        if (field.present()) {
+            os << field.value() << '\n';
+        } else {
+            os << "N/A\n";
+        }
     }
-  }
 
-  if constexpr (std::derived_from<F, SBEType_Enum>) {
-    using EnumT = typename F::value_type;
-    if (entry.present()) {
-      fmt::print(stdout, "{}: {}\n", prefix, EnumT::to_string(entry.value()));
-    } else {
-      fmt::print(stdout, "{}: N/A\n", prefix);
+    template <typename AggrT>
+        requires(requires { typename AggrT::Fields; })
+    static void print(std::ostream& os, AggrT aggr, std::string_view parent = {}) {
+        std::string prefix{parent};
+        if constexpr (requires { aggr.sbeRefName(); }) {
+            prefix.append(".").append(aggr.sbeRefName());
+        }
+
+        auto printFields = [&]<template <typename...> typename L, typename... Ts>(L<Ts...>, std::string_view prefix) {
+            if constexpr (sizeof...(Ts) > 0) {
+                [&]<std::size_t... I>(std::index_sequence<I...>) {
+                    (Printer::print(os, aggr.template get<I>(), prefix), ...);
+                }(std::make_index_sequence<sizeof...(Ts)>{});
+            } else {
+                os << "No fields\n";
+            }
+        };
+
+        if constexpr (requires { aggr.sbeGroupName(); }) {
+            std::size_t index = 0;
+            while (aggr.hasNext()) {
+                aggr.next();
+                printFields(typename AggrT::Fields{}, prefix + "[" + std::to_string(index++) + "]");
+            }
+
+        } else {
+            printFields(typename AggrT::Fields{}, prefix);
+        }
     }
-  }
+};
 
-  if constexpr (std::derived_from<F, SBEType_Set>) {
-    view_set(prefix, entry.value());
-  }
-
-  if constexpr (std::derived_from<F, SBEType_Data>) {
-    fmt::print(stdout, "{}: {}\n", prefix, entry.value());
-  }
-
-  if constexpr (std::derived_from<F, SBEType_Composite> or std::derived_from<F, SBEType_Message>) {
-    MP_forEach<MP_IndexSeq<MP_Size<typename F::Fields>>>([&](auto I) {
-      auto const name = MP_At<typename F::Fields, MP_SizeT<I>>::first_type::value;
-      view(prefix + "." + std::string(name), entry.template field<I>());
-    });
-  }
-
-  if constexpr (std::derived_from<F, SBEType_Group>) {
-    fmt::print("{} (count={}, blockLength={}):\n", prefix, entry.count(), entry.actingBlockLength());
-    std::size_t num = 0;
-    while (entry.hasNext()) {
-      entry.next();
-      // SBEType_Message, SBEType_Composite
-      MP_forEach<MP_IndexSeq<MP_Size<typename F::Fields>>>([&](auto I) {
-        auto const name = MP_At<typename F::Fields, MP_SizeT<I>>::first_type::value;
-        view(prefix + "[" + std::to_string(num) + "]." + std::string(name), entry.template field<I>());
-      });
-      num++;
+int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+    try {
+        auto buffer = std::span<std::byte>(std::bit_cast<std::byte*>((unsigned char*)content::binance_exchangeInfo_sbe),
+            content::binance_exchangeInfo_sbe_len);
+        spot_sbe::decode(buffer, [](auto msg) {
+            Printer::print(std::cout, msg);
+        });
+    } catch (std::exception const& e) {
+        std::cerr << "ERROR: " << e.what() << '\n';
+        return EXIT_FAILURE;
     }
-  }
+    return EXIT_SUCCESS;
 }
-
-TEST_CASE("schema") {
-  MessageHeader messageHeader(
-      reinterpret_cast<std::byte*>(content::binance_exchangeInfo_sbe), content::binance_exchangeInfo_sbe_len);
-  view("MessageHeader", messageHeader);
-  REQUIRE_EQ(messageHeader.field<"templateId">().present(), true);
-  REQUIRE_EQ(messageHeader.field<"templateId">().value(), ExchangeInfoResponse::sbeTemplateId());
-
-  ExchangeInfoResponse body(messageHeader.buffer(), messageHeader.encodedLength(), messageHeader.bufferLength(),
-      messageHeader.field<"blockLength">().value(), messageHeader.field<"version">().value());
-
-  view("ExchangeInfoResponse", body);
-}
-
-TEST_CASE("Enum") {
-  OrderType orderType;
-  REQUIRE_EQ(orderType, OrderType::NULL_VALUE);
-  REQUIRE_EQ(OrderType::to_string(orderType), "");
-
-  orderType = OrderType::StopLoss;
-  REQUIRE_EQ(orderType, OrderType::StopLoss);
-  REQUIRE_EQ(OrderType::to_string(orderType), "StopLoss");
-}
-
-TEST_CASE("Set") {
-  static_assert(std::is_same_v<typename OrderTypes::primitive_type, std::uint16_t>);
-
-  OrderTypes orderTypes;
-  REQUIRE_EQ(static_cast<uint16_t>(orderTypes), 0x0);
-
-  orderTypes.set(OrderTypes::Market);
-  REQUIRE_EQ(static_cast<uint16_t>(orderTypes), 0x1);
-  REQUIRE(orderTypes[OrderTypes::Market]);
-  REQUIRE_FALSE(orderTypes[OrderTypes::Limit]);
-
-  orderTypes[OrderTypes::Limit] = true;
-  REQUIRE_EQ(static_cast<uint16_t>(orderTypes), 0x3);
-  REQUIRE(orderTypes[OrderTypes::Market]);
-  REQUIRE(orderTypes[OrderTypes::Limit]);
-
-  orderTypes.reset();
-  REQUIRE_EQ(static_cast<uint16_t>(orderTypes), 0x0);
-}
-
-} // namespace spot_sbe

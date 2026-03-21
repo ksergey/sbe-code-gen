@@ -133,19 +133,19 @@ public:
         os << '[';
 {% set count = type.choices | length %}
 {% if count > 1 %}
-        bool atLeastOnePrinter = false;
+        bool atLeastOnePrinted{false};
 {% endif %}
 {% for choice in type.choices %}
     {% set choice_method = choice.name[0].lower() ~ choice.name[1:] %}
         if (value.{{ choice_method }}()) {
     {% if not loop.first and count > 1 %}
-            if (atLeastOnePrinter) {
+            if (atLeastOnePrinted) {
                 os << ", ";
             }
     {% endif %}
             os << "{{ choice.name }}";
     {% if not loop.last and count > 1 %}
-            atLeastOnePrinter = true;
+            atLeastOnePrinted = true;
     {% endif %}
         }
 {% endfor %}
@@ -374,30 +374,31 @@ public:
 
     {{ meta_decl() | indent(4) }}
 
+{% if message.fields | length > 0 %}
     using Fields = TypeList<
-{% for field in message.fields %}
-    {% set field_ref_name = field.name | fmt_class_ref %}
+    {% for field in message.fields %}
+        {% set field_ref_name = field.name | fmt_class_ref %}
         {{ field_ref_name }}{% if not loop.last %},{% endif +%}
-{% endfor %}
+    {% endfor %}
     >;
 
     template <std::size_t I>
     [[nodiscard]] constexpr auto get() noexcept {
-{% for field in message.fields %}
-    {% set field_ref_name = field.name | fmt_class_ref %}
-    {% if loop.first %}
+    {% for field in message.fields %}
+        {% set field_ref_name = field.name | fmt_class_ref %}
+        {% if loop.first %}
         if constexpr (I == {{ loop.index0 }}) {
-    {% else %}
+        {% else %}
         } else if constexpr (I == {{ loop.index0 }}) {
-    {% endif %}
-    {% if field.token == 'field' %}
+        {% endif %}
+        {% if field.token == 'field' %}
             return {{ field_ref_name }}{buffer_.data() + offset_, actingVersion_};
-    {% elif field.token == 'group' %}
+        {% elif field.token == 'group' %}
             return {{ field_ref_name }}{buffer_, &position_, actingVersion_};
-    {% elif field.token == 'data' %}
+        {% elif field.token == 'data' %}
             return {{ field_ref_name }}{buffer_, &position_, actingVersion_};
-    {% endif %}
-{% endfor %}
+        {% endif %}
+    {% endfor %}
         } else {
             static_assert(I < 0, "Field index out of range ({{ class_cpp_t }})");
         }
@@ -406,25 +407,38 @@ public:
     template <CtStr N>
     [[nodiscard]] constexpr auto get() noexcept {
         constexpr auto name = static_cast<std::string_view>(N);
-{% for field in message.fields %}
-    {% set field_ref_name = field.name | fmt_class_ref %}
-    {% if loop.first %}
+    {% for field in message.fields %}
+        {% set field_ref_name = field.name | fmt_class_ref %}
+        {% if loop.first %}
         if constexpr (name == {{ field_ref_name }}::sbeRefName()) {
-    {% else %}
+        {% else %}
         } else if constexpr (name == {{ field_ref_name }}::sbeRefName()) {
-    {% endif %}
-    {% if field.token == 'field' %}
+        {% endif %}
+        {% if field.token == 'field' %}
             return {{ field_ref_name }}{buffer_.data() + offset_, actingVersion_};
-    {% elif field.token == 'group' %}
+        {% elif field.token == 'group' %}
             return {{ field_ref_name }}{buffer_, &position_, actingVersion_};
-    {% elif field.token == 'data' %}
+        {% elif field.token == 'data' %}
             return {{ field_ref_name }}{buffer_, &position_, actingVersion_};
-    {% endif %}
-{% endfor %}
+        {% endif %}
+    {% endfor %}
         } else {
             static_assert(name.size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
         }
     }
+{% else %}
+    using Fields = TypeList<>;
+
+    template <std::size_t I>
+    [[nodiscard]] constexpr auto get() noexcept {
+        static_assert(I < 0, "Field index out of range ({{ class_cpp_t }})");
+    }
+
+    template <CtStr N>
+    [[nodiscard]] constexpr auto get() noexcept {
+        static_assert(static_cast<std::string_view>(N).size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
+    }
+{% endif %}
 };
 {%- endmacro %}
 
@@ -461,6 +475,10 @@ public:
         actingBlockLength_ = dimension.get<"blockLength">().value();
         count_ = dimension.get<"numInGroup">().value();
         *positionPtr_ = *positionPtr_ + {{ dimension.encoded_length }};
+    }
+
+    [[nodiscard]] static constexpr auto sbeGroupName() noexcept -> char const* {
+        return "{{ group.name }}";
     }
 
     [[nodiscard]] static constexpr auto sbeBlockLength() noexcept -> {{ block_length_cpp_t }} {
@@ -1129,6 +1147,10 @@ struct {{ class_cpp_t }} : public {{ group_class_cpp_t }} {
     [[nodiscard]] static constexpr auto sbeSinceVersion() noexcept -> {{ version_cpp_t }} {
         return {{ entry.since_version }};
     }
+
+    [[nodiscard]] constexpr auto present() const noexcept -> bool {
+        return true;
+    }
 };
 {%- endmacro %}
 
@@ -1151,6 +1173,10 @@ struct {{ class_cpp_t }} : public {{ group_class_cpp_t }} {
 
     [[nodiscard]] static constexpr auto sbeSinceVersion() noexcept -> {{ version_cpp_t }} {
         return {{ entry.since_version }};
+    }
+
+    [[nodiscard]] constexpr auto present() const noexcept -> bool {
+        return true;
     }
 };
 {%- endmacro %}

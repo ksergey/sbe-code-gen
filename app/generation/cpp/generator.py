@@ -43,6 +43,8 @@ class Generator(GeneratorBase):
             print(f'Generating message {message_class_name} (to {message_class_h_file})')
             self.generate_document(message_class_h_file, 'message.tmpl', message=message, schema=schema)
 
+        self.generate_document('schema.h', 'schema.tmpl', schema=schema)
+
     def generate_document(self, document_name: str, template_name: str, **kwargs) -> None:
         template = self.env.get_template(template_name)
         document_path = f'{self.path}/{document_name}'
