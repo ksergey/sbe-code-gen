@@ -14,6 +14,7 @@
 namespace content {
 
 #include "Binance_exchangeInfo_data.h"
+#include "Binance_ticker_data.h"
 
 } // namespace content
 
@@ -71,7 +72,6 @@ struct Printer {
                 aggr.next();
                 printFields(typename AggrT::Fields{}, prefix + "[" + std::to_string(index++) + "]");
             }
-
         } else {
             printFields(typename AggrT::Fields{}, prefix);
         }
@@ -80,10 +80,12 @@ struct Printer {
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     try {
-        auto buffer = std::span<std::byte>(std::bit_cast<std::byte*>((unsigned char*)content::binance_exchangeInfo_sbe),
-            content::binance_exchangeInfo_sbe_len);
-        spot_sbe::decode(buffer, [](auto msg) {
-            Printer::print(std::cout, msg);
+        [[maybe_unused]] auto buffer1 = std::span<std::byte>(
+            std::bit_cast<std::byte*>((unsigned char*)content::exchangeInfo), content::exchangeInfo_len);
+        [[maybe_unused]] auto buffer2 =
+            std::span<std::byte>(std::bit_cast<std::byte*>((unsigned char*)content::ticker), content::ticker_len);
+        spot_sbe::decode(buffer2, [](auto msg) {
+            Printer::print(std::cout, msg, msg.sbeMessageName());
         });
     } catch (std::exception const& e) {
         std::cerr << "ERROR: " << e.what() << '\n';
