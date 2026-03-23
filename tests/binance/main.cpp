@@ -84,8 +84,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
             std::bit_cast<std::byte*>((unsigned char*)content::exchangeInfo), content::exchangeInfo_len);
         [[maybe_unused]] auto buffer2 =
             std::span<std::byte>(std::bit_cast<std::byte*>((unsigned char*)content::ticker), content::ticker_len);
+#if 0
         spot_sbe::decode(buffer2, [](auto msg) {
             Printer::print(std::cout, msg, msg.sbeMessageName());
+        });
+#endif
+        spot_sbe::decode(buffer2, [](auto msg) {
+            std::cout << msg.asJson().dump(2) << '\n';
         });
     } catch (std::exception const& e) {
         std::cerr << "ERROR: " << e.what() << '\n';

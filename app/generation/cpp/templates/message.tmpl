@@ -8,6 +8,10 @@
 #include <cmath>
 #include <cstddef>
 #include <span>
+{% if generate.decl_json_io %}
+
+#include <nlohmann/json.hpp>
+{% endif %}
 {# let's find all non-trivial types recursively #}
 {% set types = [ schema.header_type.name ] %}
 {% for field in message.fields recursive %}

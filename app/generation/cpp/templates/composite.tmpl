@@ -7,6 +7,10 @@
 #include <bit>
 #include <cmath>
 #include <cstddef>
+{% if generate.decl_json_io %}
+
+#include <nlohmann/json.hpp>
+{% endif %}
 {% if type.name == schema.header_type.name %}
 #include <span>
 {% endif %}

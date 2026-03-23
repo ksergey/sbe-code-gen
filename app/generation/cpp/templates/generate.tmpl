@@ -9,6 +9,8 @@
 {% set schema_id_cpp_t = schemaId.primitive_type.name | replace_keyword %}
 {% set version_cpp_t = version.primitive_type.name | replace_keyword %}
 
+{% set decl_json_io = True %}
+
 {# ------------------------------------ #}
 
 {% macro meta_decl() %}
@@ -115,7 +117,7 @@ public:
     {% set choice_method = choice.name[0].lower() ~ choice.name[1:] %}
     {% set choice_bit = 'k' ~ choice.name[0].upper() ~ choice.name[1:] ~ 'Bit' %}
 
-    [[nodiscard]] constexpr auto {{ choice_method }}() noexcept -> bool {
+    [[nodiscard]] constexpr auto {{ choice_method }}() const noexcept -> bool {
         return {{ choice_bit }} == ({{ choice_bit }} & value_);
     }
 
@@ -437,6 +439,17 @@ public:
     template <CtStr N>
     [[nodiscard]] constexpr auto get() noexcept {
         static_assert(static_cast<std::string_view>(N).size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
+    }
+{% endif %}
+{% if decl_json_io %}
+
+    {# asJson() #}
+    constexpr auto asJson() -> nlohmann::json {
+        auto json = nlohmann::json::object();
+    {% for field in message.fields %}
+        json["{{ field.name }}"] = this->get<"{{ field.name }}">().asJson();
+    {% endfor %}
+        return json;
     }
 {% endif %}
 };
@@ -893,6 +906,18 @@ struct {{ class_cpp_t }} {
         return *this;
     }
 {% endif %}
+{% if decl_json_io %}
+
+    {# asJson() #}
+    constexpr auto asJson() -> nlohmann::json {
+    {% if is_optional %}
+        if (!this->present()) {
+            return nlohmann::json();
+        }
+    {% endif %}
+        return this->value();
+    }
+{% endif %}
 };
 {%- endmacro %}
 
@@ -1010,6 +1035,19 @@ struct {{ class_cpp_t }} {
         return this->value({{ value_cpp_t }}::SBE_NULL);
     }
 {% endif %}
+{% if decl_json_io %}
+
+    {# asJson() #}
+    constexpr auto asJson() -> nlohmann::json {
+        switch (this->value()) {
+    {% for valid_value in type.valid_values %}
+        case {{ value_cpp_t }}::{{ valid_value.name | fmt_enum_value }}: return "{{ valid_value.name }}";
+    {% endfor %}
+        default: break;
+        }
+        return nlohmann::json();
+    }
+{% endif %}
 };
 {%- endmacro %}
 
@@ -1083,6 +1121,21 @@ struct {{ class_cpp_t }} {
     {% endif %}
         return *this;
     }
+{% if decl_json_io %}
+
+    {# asJson() #}
+    constexpr auto asJson() -> nlohmann::json {
+        auto const val = this->value();
+        auto json = nlohmann::json::array();
+    {% for choice in type.choices %}
+    {% set choice_method = choice.name[0].lower() ~ choice.name[1:] %}
+        if (val.{{ choice_method }}()) {
+            json.push_back("{{ choice.name }}");
+        }
+    {% endfor %}
+        return json;
+    }
+{% endif %}
 };
 {%- endmacro %}
 
@@ -1124,6 +1177,20 @@ struct {{ class_cpp_t }} : public {{ value_cpp_t }} {
 
     // TODO: convert to decimal/double/etc... ?
 {% endif %}
+{% if decl_json_io %}
+
+    {# asJson() #}
+    constexpr auto asJson() -> nlohmann::json {
+        if (!this->present()) {
+            return nlohmann::json();
+        }
+        auto json = nlohmann::json::object();
+    {% for composite_type in type.composite_types %}
+        json["{{ composite_type.reference_name }}"] = this->get<"{{ composite_type.reference_name }}">().asJson();
+    {% endfor %}
+        return json;
+    }
+{% endif %}
 };
 {%- endmacro %}
 
@@ -1148,9 +1215,26 @@ struct {{ class_cpp_t }} : public {{ group_class_cpp_t }} {
         return {{ entry.since_version }};
     }
 
+    {# TODO: remove ? #}
     [[nodiscard]] constexpr auto present() const noexcept -> bool {
         return true;
     }
+{% if decl_json_io %}
+
+    {# asJson() #}
+    constexpr auto asJson() -> nlohmann::json {
+        auto json = nlohmann::json::array();
+        while (this->hasNext()) {
+            this->next();
+            auto obj = nlohmann::json::object();
+    {% for field in entry.fields %}
+            obj["{{ field.name }}"] = this->get<"{{ field.name }}">().asJson();
+    {% endfor %}
+            json.push_back(obj);
+        }
+        return json;
+    }
+{% endif %}
 };
 {%- endmacro %}
 
@@ -1175,9 +1259,17 @@ struct {{ class_cpp_t }} : public {{ group_class_cpp_t }} {
         return {{ entry.since_version }};
     }
 
+    {# TODO: remove? #}
     [[nodiscard]] constexpr auto present() const noexcept -> bool {
         return true;
     }
+{% if decl_json_io %}
+
+    {# asJson() #}
+    constexpr auto asJson() -> nlohmann::json {
+        return this->value();
+    }
+{% endif %}
 };
 {%- endmacro %}
 
