@@ -25,4 +25,3 @@ if (NOT TARGET nlohmann_json::nlohmann_json)
 endif()
 
 add_subdirectory(binance)
-add_subdirectory(real-logic)
