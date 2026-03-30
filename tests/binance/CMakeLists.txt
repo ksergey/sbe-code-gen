@@ -1,7 +1,7 @@
 sbe_make_codec(spot_2_0
     SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/../../resources/spot_3_1.xml
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/spot_3_1
-    GENERATOR cpp
+    GENERATOR cpp-all-features
 )
 
 set(Target binance)

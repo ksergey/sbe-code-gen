@@ -1,0 +1,54 @@
+{% import 'generate.tmpl' as generate with context %}
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
+
+#pragma once
+
+#include <algorithm>
+#include <bit>
+#include <cassert>
+#include <cmath>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <limits>
+#include <string_view>
+
+namespace {{ generate.namespace }} {
+
+{{ generate.decl_support_types() }}
+{% for encoded_type in schema.types %}
+    {% if encoded_type.token == 'enum' %}
+
+{{ generate.decl_enum(encoded_type) }}
+    {% elif encoded_type.token == 'set' %}
+
+{{ generate.decl_set(encoded_type) }}
+    {% elif encoded_type.token == 'composite' %}
+
+{{ generate.decl_composite(encoded_type) }}
+    {% endif %}
+{% endfor %}
+{% for message in schema.messages %}
+
+{{ generate.decl_message(message) }}
+{% endfor %}
+
+} // namespace {{ generate.namespace }}
+{% for encoded_type in schema.types %}
+    {% if encoded_type.token == 'enum' %}
+
+{{ generate.decl_enum_formatter(encoded_type) }}
+    {% elif encoded_type.token == 'set' %}
+
+{{ generate.decl_set_formatter(encoded_type) }}
+    {% elif encoded_type.token == 'composite' %}
+
+{{ generate.decl_composite_formatter(encoded_type) }}
+    {% endif %}
+{% endfor %}
+{% for message in schema.messages %}
+
+{{ generate.decl_message_formatter(message) }}
+{% endfor %}

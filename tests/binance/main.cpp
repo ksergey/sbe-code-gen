@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <iostream>
+#include <print>
 #include <span>
 #include <string_view>
 #include <type_traits>
@@ -84,16 +85,25 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
             std::bit_cast<std::byte*>((unsigned char*)content::exchangeInfo), content::exchangeInfo_len);
         [[maybe_unused]] auto buffer2 =
             std::span<std::byte>(std::bit_cast<std::byte*>((unsigned char*)content::ticker), content::ticker_len);
+
+        auto header = spot_sbe::MessageHeader{buffer2.data()};
+        std::print("header: {}\n", header);
+        if (header.get<"templateId">().value() == spot_sbe::Ticker24hFullResponse::sbeTemplateId()) {
+            auto body = spot_sbe::Ticker24hFullResponse(buffer2, header.sbeEncodedLength(),
+                header.get<"blockLength">().value(), header.get<"version">().value());
+            std::print("body: {}\n", body);
+        }
+
 #if 0
         spot_sbe::decode(buffer2, [](auto msg) {
             Printer::print(std::cout, msg, msg.sbeMessageName());
         });
-#endif
         spot_sbe::decode(buffer2, [](auto msg) {
             std::cout << msg.asJson().dump(2) << '\n';
         });
+#endif
     } catch (std::exception const& e) {
-        std::cerr << "ERROR: " << e.what() << '\n';
+        std::print(stderr, "ERROR: {}\n", e.what());
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
