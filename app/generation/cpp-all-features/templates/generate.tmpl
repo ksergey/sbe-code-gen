@@ -411,6 +411,7 @@ public:
     }
 
     // Compute buffer size for encode message header and message body
+    // TODO: wrong!
     [[nodiscard]] static constexpr auto computeBufferSize({%- for field in va_fields %}{{ comma() }}std::size_t count{{ loop.index0 }} = 0{% endfor -%}) -> std::size_t {
 {% if va_fields | length > 0 %}
         auto bufferSize = std::size_t({{ schema.header_type.encoded_length + message.block_length }}u);
