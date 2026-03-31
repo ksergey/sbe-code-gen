@@ -69,7 +69,7 @@ enum class {{ class_cpp_t }} : {{ enc_cpp_t }} {
     {{ valid_value.name | fmt_enum_value }} = {{ valid_value.value }},
     {% endif %}
 {% endfor %}
-    SBE_NULL = {{ type.null_value | to_cpp_value(type.encoding_type.name) }}
+    SBE_NULL = {{ type.null_value | to_cpp_value(type.encoding_type) }}
 };
 static_assert(sizeof({{ class_cpp_t }}) == {{ type.encoded_length }});
 {%- endmacro %}
@@ -244,7 +244,7 @@ public:
         , actingVersion_{actingVersion}
     {
         if (position_ > buffer_.size()) [[unlikely]] {
-          throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
+            throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
         }
     }
 
@@ -401,44 +401,51 @@ public:
         static_assert(static_cast<std::string_view>(N).size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
     }
 {% endif %}
+{% set va_fields_count = message.fields | selectattr('token', 'in', ['group', 'data']) | list | length %}
+{% if va_fields_count == 0 %}
 
-{# computeBufferSize #}
-{% set comma = joiner(', ') %}
-{% set va_fields = message | va_length_fields %}
-    // Return true on message do not contain group and data fields
-    [[nodiscard]] static constexpr auto alwaysConstantSize() noexcept -> bool {
-        return {% if va_fields | length == 0 %}true{% else %}false{% endif %};
+    {# bufferSizeAlwaysConstant() #}
+    [[nodiscard]] static constexpr auto bufferSizeAlwaysConstant() noexcept -> bool {
+        return true;
     }
 
-    // Compute buffer size for encode message header and message body
-    // TODO: wrong!
-    [[nodiscard]] static constexpr auto computeBufferSize({%- for field in va_fields %}{{ comma() }}std::size_t count{{ loop.index0 }} = 0{% endfor -%}) -> std::size_t {
-{% if va_fields | length > 0 %}
-        auto bufferSize = std::size_t({{ schema.header_type.encoded_length + message.block_length }}u);
-    {% for field in va_fields %}
-        {% set var_name = 'count' ~ loop.index0 %}
-        {% if field.token == 'group' %}
-            {% set dimension = field.dimension_type %}
-            {% set numInGroup = (field.dimension_type.contained_types | selectattr('name', 'equalto', 'numInGroup') | first) %}
-            {% set min_value = numInGroup.min_value | to_cpp_value(numInGroup.primitive_type.name) %}
-            {% set max_value = numInGroup.max_value | to_cpp_value(numInGroup.primitive_type.name) %}
-        assert({{ var_name }} >= ({{ min_value }}) && {{ var_name }} <= ({{ max_value }}));
-        bufferSize += {{ dimension.encoded_length }} + {{ var_name }} * {{ field.block_length }};
-        {% elif field.token == 'data' %}
-            {% set length = (field.type.contained_types | selectattr('name', 'equalto', 'length') | first) %}
-            {% set varData = (field.type.contained_types | selectattr('name', 'equalto', 'varData') | first) %}
-            {% set min_value = length.min_value | to_cpp_value(length.primitive_type.name) %}
-            {% set max_value = length.max_value | to_cpp_value(length.primitive_type.name) %}
-        assert({{ var_name }} >= ({{ min_value }}) && {{ var_name }} <= ({{ max_value }}));
-        bufferSize += {{ length.encoded_length }} + {{ var_name }}{% if varData.primitive_type.size > 1 %} * {{ varData.primitive_type.size }}{% endif %};
-        {% endif %}
-    {% endfor %}
-        return bufferSize;
-{% else %}
+    {# computeBufferSize #}
+    // Return buffer size which enought to encode message header and message size
+    [[nodiscard]] static constexpr auto computeBufferSize() noexcept -> std::size_t {
         return {{ schema.header_type.encoded_length + message.block_length }}u;
-{% endif %}
     }
+{% else %}
+
+    {# bufferSizeAlwaysConstant() #}
+    [[nodiscard]] static constexpr auto bufferSizeAlwaysConstant() noexcept -> bool {
+        return false;
+    }
+
+    // Not implemeted
+    // [[nodiscard]] static constexpr auto computeBufferSize(...) noexcept -> std::size_t {}
+{% endif %}
 };
+{%- endmacro %}
+
+{# TODO: FIXME #}
+{% macro decl_compute_buffer_size_arg_list(group) -%}
+{% set comma = joiner(', ') %}
+{% set group_fields = group.fields | selectattr('token', 'equalto', 'group') | list %}
+{% set data_fields = group.fields | selectattr('token', 'equalto', 'data') | list %}
+{% set va_count = group_fields | length + data_fields | length %}
+{% if va_count > 0 -%}
+    {%- for field in group.fields %}
+        {%- if field.token == 'group' -%}
+            {%- if va_count == 1 -%}
+{{- comma() }}std::vector<{{ decl_compute_buffer_size_arg_list(field) -}}>
+            {%- else -%}
+{{- comma() }}std::vector<std::tuple<{{ decl_compute_buffer_size_arg_list(field) -}}>>
+            {%- endif -%}
+        {%- elif field.token == 'data' -%}
+{{- comma() }}std::size_t
+        {%- endif %}
+    {%- endfor -%}
+{%- endif %}
 {%- endmacro %}
 
 {# ------------------------------------ #}
@@ -497,7 +504,7 @@ public:
     }
 
     constexpr auto reset({{ num_in_group_cpp_t }} count) -> {{ class_cpp_t }}& {
-        if (count > ({{ numInGroup.max_value | to_cpp_value(numInGroup.primitive_type.name) }})) [[unlikely]] {
+        if (count > ({{ numInGroup.max_value | to_cpp_value(numInGroup.primitive_type) }})) [[unlikely]] {
             throw std::runtime_error{"count out of allowed range in group \"{{ class_cpp_t }}\""};
         }
         count_ = count;
@@ -740,15 +747,15 @@ struct {{ class_cpp_t }} {
 {% endif %}
 
     [[nodiscard]] static constexpr auto nullValue() noexcept -> {{ enc_cpp_t }} {
-        return {{ type.null_value | to_cpp_value(type.primitive_type.name) }};
+        return {{ type.null_value | to_cpp_value(type.primitive_type) }};
     }
 
     [[nodiscard]] static constexpr auto minValue() noexcept -> {{ enc_cpp_t }} {
-        return {{ type.min_value | to_cpp_value(type.primitive_type.name) }};
+        return {{ type.min_value | to_cpp_value(type.primitive_type) }};
     }
 
     [[nodiscard]] static constexpr auto maxValue() noexcept -> {{ enc_cpp_t }} {
-        return {{ type.max_value | to_cpp_value(type.primitive_type.name) }};
+        return {{ type.max_value | to_cpp_value(type.primitive_type) }};
     }
 {% if is_required or is_optional %}
 
@@ -806,7 +813,7 @@ struct {{ class_cpp_t }} {
     {% elif type.primitive_type.name == 'double' and type.null_value == 'DOUBLE_NULL' %}
         return !std::isnan(*this->data0());
     {% else %}
-        return this->data0() != {{ enc_cpp_t }}({{ type.null_value | to_cpp_value(type.primitive_type.name) }});
+        return this->data0() != {{ enc_cpp_t }}({{ type.null_value | to_cpp_value(type.primitive_type) }});
     {% endif %}
     }
 {% endif %}
@@ -882,7 +889,7 @@ struct {{ class_cpp_t }} {
 
     {# reset() #}
     constexpr auto reset() noexcept -> {{ class_cpp_t }}& {
-        *this->data() = {{ enc_cpp_t }}({{ type.null_value | to_cpp_value(type.primitive_type.name) }});
+        *this->data() = {{ enc_cpp_t }}({{ type.null_value | to_cpp_value(type.primitive_type) }});
         return *this;
     }
 {% endif %}
@@ -1304,7 +1311,7 @@ struct std::formatter<{{ namespace }}::{{ class_cpp_t }}> : std::formatter<std::
 template <>
 struct std::formatter<{{ namespace }}::{{ class_cpp_t }}> : std::formatter<std::string_view> {
     using Base = std::formatter<std::string_view>;
-    constexpr auto format({{ namespace }}::{{ class_cpp_t }} value, std::format_context& ctx) const {
+    constexpr auto format([[maybe_unused]] {{ namespace }}::{{ class_cpp_t }} value, std::format_context& ctx) const {
         using namespace {{ namespace }};
         Base::format("{{ class_cpp_t }}{", ctx);
 {% for field in message.fields %}

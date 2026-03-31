@@ -44,7 +44,6 @@ class Generator(GeneratorBase):
         self.env.filters['fmt_header_name'] = lambda s: s + '.h'
         self.env.filters['to_cpp_type']  = Generator.to_cpp_type
         self.env.filters['to_cpp_value']  = Generator.to_cpp_value
-        self.env.filters['va_length_fields']  = Generator.va_length_fields
 
     @staticmethod
     def to_cpp_type(value: str) -> str:
@@ -63,7 +62,7 @@ class Generator(GeneratorBase):
         }.get(value)
 
     @staticmethod
-    def to_cpp_value(value: str, primitive_type_name: str) -> str:
+    def to_cpp_value(value: str, primitive_type: dict) -> str:
         result = {
             'CHAR_NULL':    '0',
             'CHAR_MIN':     '0x20',
@@ -101,17 +100,6 @@ class Generator(GeneratorBase):
         }.get(value)
         if result:
             return result
-        if primitive_type_name in ('uint8', 'uint16', 'uint32', 'uint64'):
+        if primitive_type['name'] in ['uint8', 'uint16', 'uint32', 'uint64']:
             return value + 'u'
         return value
-
-    @staticmethod
-    def va_length_fields(entry: dict) -> list[str]:
-        result = []
-        for field in entry['fields']:
-            if field['token'] == 'data':
-                result.append(field)
-            elif field['token'] == 'group':
-                result.append(field)
-                result = result + Generator.va_length_fields(field)
-        return result
