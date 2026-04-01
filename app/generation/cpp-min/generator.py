@@ -46,7 +46,7 @@ class Generator(GeneratorBase):
         self.env.filters['to_cpp_value']  = Generator.to_cpp_value
 
     @staticmethod
-    def to_cpp_type(value: str) -> str:
+    def to_cpp_type(primitive_type: dict) -> str:
         return {
             'int8':     'std::int8_t',
             'int16':    'std::int16_t',
@@ -59,7 +59,7 @@ class Generator(GeneratorBase):
             'double':   'double',
             'float':    'float',
             'char':     'char'
-        }.get(value)
+        }.get(primitive_type['name'])
 
     @staticmethod
     def to_cpp_value(value: str, primitive_type: dict) -> str:
