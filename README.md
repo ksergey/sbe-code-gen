@@ -21,8 +21,8 @@ The tool generates codec implementations in multiple programming languages (C++,
 - [ ] rust support?
 - [x] python support
 - [x] (cppng) from/to json serialization
-- [ ] (cppng) set/get fixed-length strings as variable length string (trim till '\0')
-- [ ] (cppng) calculate buffer size for a message
+- [x] (cppng) set/get fixed-length strings as variable length string (trim till '\0')
+- [x] (cppng) calculate buffer size for a message
 - [ ] tests
 - [ ] examples
 - [ ] docs
