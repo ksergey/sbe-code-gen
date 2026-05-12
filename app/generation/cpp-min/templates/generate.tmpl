@@ -107,6 +107,64 @@ if constexpr (std::endian::native == std::endian::little) {
 
 {# ------------------------------------ #}
 
+{% macro decl_calc_args_class(group) %}
+{% set va_args_count = group.fields | selectattr('token', 'in', ['group', 'data']) | list | length %}
+{% if va_args_count > 0 -%}
+std::tuple<
+    {% for field in group.fields | selectattr('token', 'in', ['group', 'data']) %}
+        {% if field.token == 'group' %}
+            {% if field.fields | selectattr('token', 'in', ['group', 'data' ]) | list | length > 0 %}
+    std::vector<
+        {{ decl_calc_args_class(field) | indent(8) }}
+    > /* {{ field.name }} */{% if not loop.last %},{% endif +%}
+            {% else %}
+    std::size_t /* {{ field.name }} */{% if not loop.last %},{% endif +%}
+            {% endif %}
+        {% elif field.token == 'data' %}
+    std::size_t /* {{ field.name }} */{% if not loop.last %},{% endif +%}
+        {% endif %}
+    {% endfor %}
+>
+{%- endif %}
+{%- endmacro %}
+
+{% macro decl_calc_args(group, argName) %}
+{% set va_args_count = group.fields | selectattr('token', 'in', ['group', 'data']) | list | length %}
+{% if va_args_count > 0 -%}
+std::apply([](
+    {%- for field in group.fields | selectattr('token', 'in', ['group', 'data']) -%}
+auto const& field_{{ field.name -}}{%- if not loop.last %}, {% endif -%}
+    {%- endfor -%}
+) -> std::size_t {
+    std::size_t result{0};
+    {% for field in group.fields | selectattr('token', 'in', ['group', 'data']) %}
+    // {{ field.name }} ({{ field.token }})
+        {% if field.token == 'group' %}
+            {% if field.fields | selectattr('token', 'in', ['group', 'data' ]) | list | length > 0 %}
+    result += {{ field.dimension_type.encoded_length }};
+    for (auto const& entry : field_{{ field.name }}) {
+        result += {{ field.block_length }} + {{ decl_calc_args(field, 'entry') | indent(8) }};
+    }
+            {% else %}
+    result += field_{{ field.name}} * {{ field.block_length }} + {{ field.dimension_type.encoded_length }};
+            {% endif %}
+        {% elif field.token == 'data' %}
+            {% set length = (field.type.contained_types | selectattr('reference_name', 'equalto', 'length') | first) %}
+            {% set varData = (field.type.contained_types | selectattr('reference_name', 'equalto', 'varData') | first) %}
+            {% if varData.primitive_type.size > 1 %}
+    result += field_{{ field.name }} * {{ varData.primitive_type.size }} + {{ length.encoded_length }};
+            {% else %}
+    result += field_{{ field.name }} + {{ length.encoded_length }};
+            {% endif %}
+        {% endif %}
+    {% endfor %}
+    return result;
+}, {{ argName }})
+{%- endif %}
+{%- endmacro %}
+
+{# ------------------------------------ #}
+
 {% macro decl_enum(type) %}
 {% set class_cpp_t = type.name | fmt_class_type %}
 {% set enc_cpp_t = type.encoding_type | to_cpp_type %}
@@ -271,6 +329,8 @@ public:
 
 {% macro decl_message(message) %}
 {% set class_cpp_t = message.name | fmt_class_message %}
+{# count of variable-length fields (groups and data)#}
+{% set va_args_count = message.fields | selectattr('token', 'in', ['group', 'data']) | list | length %}
 class {{ class_cpp_t }} {
 private:
     std::span<std::byte> buffer_;
@@ -445,6 +505,24 @@ public:
     template <CtStr N>
     [[nodiscard]] constexpr auto get() noexcept {
         static_assert(static_cast<std::string_view>(N).size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
+    }
+{% endif %}
+
+{% if va_args_count > 0 %}
+
+    using CalcArgsHelper = {{ decl_calc_args_class(message) | indent(4) }};
+
+    [[nodiscard]] static constexpr auto calcBufferSize(CalcArgsHelper const& info) noexcept -> std::size_t {
+        std::size_t bufferSize{ {{- message.block_length -}} };
+
+        bufferSize += {{ decl_calc_args(message, 'info') | indent(8) }};
+
+        return bufferSize;
+    }
+{% else %}
+
+    [[nodiscard]] static constexpr auto calcBufferSize() noexcept -> std::size_t {
+        return {{ message.block_length }};
     }
 {% endif %}
 };

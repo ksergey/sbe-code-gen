@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.14)
 
 project(sbe-code-gen)
 
+include(cmake/Utils.cmake)
+
 # TODO: setup env should be done once?
 
 function(sbe_make_codec TARGET)
@@ -54,6 +56,7 @@ function(sbe_make_codec TARGET)
     target_compile_features(${TARGET} INTERFACE cxx_std_23)
     target_sources(${TARGET} INTERFACE ${destDir}/schema.h)
     target_include_directories(${TARGET} INTERFACE "${PARSED_OUTPUT}")
+    target_precompile_headers(${TARGET} INTERFACE ${destDir}/schema.h)
 endfunction()
 
 enable_testing()

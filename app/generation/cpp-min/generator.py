@@ -41,7 +41,6 @@ class Generator(GeneratorBase):
         self.env.filters['fmt_class_group'] = lambda s: s[0].upper() + s[1:] + 'Group'
         self.env.filters['fmt_class_data'] = lambda s: s[0].upper() + s[1:] + 'Data'
         self.env.filters['fmt_enum_value'] = lambda s: s
-        self.env.filters['fmt_header_name'] = lambda s: s + '.h'
         self.env.filters['to_cpp_type']  = Generator.to_cpp_type
         self.env.filters['to_cpp_value']  = Generator.to_cpp_value
 
