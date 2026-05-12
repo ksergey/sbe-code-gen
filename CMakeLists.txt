@@ -61,5 +61,5 @@ endfunction()
 
 enable_testing()
 
-add_subdirectory(tests EXCLUDE_FROM_ALL)
+add_subdirectory(tests)
 add_subdirectory(example EXCLUDE_FROM_ALL)
