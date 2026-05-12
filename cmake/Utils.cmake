@@ -4,7 +4,7 @@ function(SbeCodeGenRemoveMatchesFromList)
     set(options)
     set(oneValueArgs)
     set(multiValueArgs MATCHES)
-    cmake_parse_arguments(_scg_PARSED "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    cmake_parse_arguments(TQ_PARSED "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     foreach (_scg_LIST ${_scg_PARSED_UNPARSED_ARGUMENTS})
         foreach (_scg_ENTRY ${${_scg_LIST}})
@@ -30,6 +30,8 @@ function(SbeCodeGenAddTestsFromSourceList)
             if (${_scg_ENTRY} MATCHES ".*_test.cpp")
                 string(REGEX REPLACE "^.*\/(.*)_test\.cpp$" "\\1" testName "${_scg_ENTRY}")
                 set(testName "${_scg_PARSED_PREFIX}-${testName}-test")
+
+                message(STATUS "found test \"${testName}\"")
 
                 add_executable(${testName} ${_scg_ENTRY})
                 target_compile_options(${testName} PRIVATE ${_scg_PARSED_OPTIONS})
