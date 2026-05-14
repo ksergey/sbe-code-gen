@@ -18,7 +18,7 @@
 {# ------------------------------------ #}
 
 {% macro decl_support_types() %}
-// Compile time string
+// compile time string
 template <std::size_t N>
 struct CtStr {
     char data[N];
@@ -32,7 +32,7 @@ struct CtStr {
 template <std::size_t N>
 CtStr(char const (&)[N]) -> CtStr<N>;
 
-// Type list
+// type list
 template <typename...>
 struct TypeList {};
 
@@ -113,15 +113,17 @@ if constexpr (std::endian::native == std::endian::little) {
 std::tuple<
     {% for field in group.fields | selectattr('token', 'in', ['group', 'data']) %}
         {% if field.token == 'group' %}
+    // group: {{ field.name }} ({{ field.block_length }})
             {% if field.fields | selectattr('token', 'in', ['group', 'data' ]) | list | length > 0 %}
     std::vector<
         {{ decl_calc_args_class(field) | indent(8) }}
-    > /* {{ field.name }} */{% if not loop.last %},{% endif +%}
+    >{% if not loop.last %},{% endif +%}
             {% else %}
-    std::size_t /* {{ field.name }} */{% if not loop.last %},{% endif +%}
+    std::size_t{% if not loop.last %},{% endif +%}
             {% endif %}
         {% elif field.token == 'data' %}
-    std::size_t /* {{ field.name }} */{% if not loop.last %},{% endif +%}
+    // data: {{ field.name }}
+    std::size_t{% if not loop.last %},{% endif +%}
         {% endif %}
     {% endfor %}
 >
@@ -359,13 +361,13 @@ public:
         if (offset + {{ messageHeader.encoded_length }} > buffer.size()) [[unlikely]] {
             throw std::runtime_error{"not enought space for \"{{ message_header_cpp_t }}\""};
         }
-        auto header = {{ message_header_cpp_t }}(buffer.data());
+        auto header = {{ message_header_cpp_t }}{buffer.data()};
         header.get<"blockLength">().value({{ message.block_length }});
         header.get<"templateId">().value({{ message.id }});
         header.get<"schemaId">().value({{ schema.id }});
         header.get<"version">().value({{ schema.version }});
 
-        return {{ class_cpp_t }}(buffer, offset + {{ messageHeader.encoded_length }}, {{ message.block_length }}, {{ schema.version }});
+        return {{ class_cpp_t }}{buffer, offset + {{ messageHeader.encoded_length }}, {{ message.block_length }}, {{ schema.version -}} };
     }
 
     [[nodiscard]] constexpr auto buffer() const noexcept -> std::span<std::byte> {
@@ -507,21 +509,24 @@ public:
         static_assert(static_cast<std::string_view>(N).size() + 1 < 0, "Field not found ({{ class_cpp_t }})");
     }
 {% endif %}
-
 {% if va_args_count > 0 %}
 
-    using CalcArgsHelper = {{ decl_calc_args_class(message) | indent(4) }};
+    // Group and data fields size hint
+    using SizeHint = {{ decl_calc_args_class(message) | indent(4) }};
 
-    [[nodiscard]] static constexpr auto calcBufferSize(CalcArgsHelper const& info) noexcept -> std::size_t {
+    // compute buffer size
+    [[nodiscard]] static constexpr auto sbeComputeSize(SizeHint const& hint = {}) noexcept -> std::size_t {
         std::size_t bufferSize{ {{- message.block_length -}} };
 
-        bufferSize += {{ decl_calc_args(message, 'info') | indent(8) }};
+        bufferSize += {{ decl_calc_args(message, 'hint') | indent(8) }};
 
         return bufferSize;
     }
 {% else %}
 
-    [[nodiscard]] static constexpr auto calcBufferSize() noexcept -> std::size_t {
+    using SizeHint = std::tuple<>;
+
+    [[nodiscard]] static constexpr auto sbeComputeSize(std::tuple<> const& = {}) noexcept -> std::size_t {
         return {{ message.block_length }};
     }
 {% endif %}

@@ -20,7 +20,18 @@
 
 namespace {{ generate.namespace }} {
 
+{% for message in schema.messages %}
+class {{ message.name | fmt_class_message }};
+{% endfor %}
+
 {{ generate.decl_support_types() }}
+
+// schema messages list
+using Messages = TypeList<
+{% for message in schema.messages %}
+    {{ message.name | fmt_class_message }}{% if not loop.last %},{% endif +%}
+{% endfor %}
+>;
 {% for encoded_type in schema.types %}
     {% if encoded_type.token == 'enum' %}
 
@@ -39,17 +50,3 @@ namespace {{ generate.namespace }} {
 {% endfor %}
 
 } // namespace {{ generate.namespace }}
-{#
-{% for encoded_type in schema.types %}
-    {% if encoded_type.token == 'enum' %}
-
-{{ generate.decl_enum_formatter(encoded_type) }}
-    {% elif encoded_type.token == 'set' %}
-
-{{ generate.decl_set_formatter(encoded_type) }}
-    {% elif encoded_type.token == 'composite' %}
-
-{{ generate.decl_composite_formatter(encoded_type) }}
-    {% endif %}
-{% endfor %}
-#}
