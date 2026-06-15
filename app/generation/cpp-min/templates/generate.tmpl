@@ -444,6 +444,8 @@ public:
     {% endif %}
 {% endfor %}
 
+    using Header = {{ messageHeader | fmt_class_type }};
+
 {% if message.fields | length > 0 %}
     using Fields = TypeList<
     {% for field in message.fields %}
