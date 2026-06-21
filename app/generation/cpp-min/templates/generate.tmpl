@@ -356,6 +356,10 @@ public:
         }
     }
 
+    constexpr {{ class_cpp_t }}(std::byte* bufferPtr, std::size_t bufferSize, std::size_t offset = 0, {{ block_length_cpp_t }} actingBlockLength = {{ message.block_length }}, {{ version_cpp_t }} actingVersion = {{ schema.version }})
+        : {{ class_cpp_t }}{std::span<std::byte>{bufferPtr, bufferSize}, offset, actingBlockLength, actingVersion}
+    {}
+
     [[nodiscard]] static constexpr auto wrapAndApplyHeader(std::span<std::byte> buffer, std::size_t offset = 0) -> {{ class_cpp_t }} {
         {% set message_header_cpp_t = messageHeader.name | fmt_class_type %}
         if (offset + {{ messageHeader.encoded_length }} > buffer.size()) [[unlikely]] {
