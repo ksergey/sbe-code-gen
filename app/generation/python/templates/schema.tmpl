@@ -57,11 +57,22 @@ class Schema:
         return cls.pack(ctx, value)
 
     @staticmethod
-    def decode(ctx: CodecContext) -> Any:
+    def decode(ctx: CodecContext) -> tuple:
         header = MessageHeader.unpack(ctx)
         cls = Schema.getCodecCls(header.get('templateId'))
         ctx.offset += MessageHeader.ENCODED_LENGTH
-        return cls.unpack(ctx, header.get('blockLength'))
+        return (cls, cls.unpack(ctx, header.get('blockLength')))
+
+
+def encode(cls, data: object = None, *, buffer_size = 512) -> bytearray:
+    buffer = bytearray(buffer_size)
+    ctx = CodecContext(buffer)
+    Schema.encode(ctx, data or {}, cls=cls)
+    return ctx.buffer[:ctx.offset]
+
+def decode(buffer: Union[bytes, bytearray, memoryview]) -> tuple:
+    ctx = CodecContext(buffer)
+    return Schema.decode(ctx)
 
 # Example
 #
