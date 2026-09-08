@@ -352,7 +352,7 @@ public:
         , actingVersion_{actingVersion}
     {
         if (position_ > buffer_.size()) [[unlikely]] {
-            throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
+            throw std::runtime_error{"not enough space for \"{{ class_cpp_t }}\""};
         }
     }
 
@@ -363,7 +363,7 @@ public:
     [[nodiscard]] static constexpr auto wrapAndApplyHeader(std::span<std::byte> buffer, std::size_t offset = 0) -> {{ class_cpp_t }} {
         {% set message_header_cpp_t = messageHeader.name | fmt_class_type %}
         if (offset + {{ messageHeader.encoded_length }} > buffer.size()) [[unlikely]] {
-            throw std::runtime_error{"not enought space for \"{{ message_header_cpp_t }}\""};
+            throw std::runtime_error{"not enough space for \"{{ message_header_cpp_t }}\""};
         }
         auto header = {{ message_header_cpp_t }}{buffer.data()};
         header.get<"blockLength">().value({{ message.block_length }});
@@ -621,7 +621,7 @@ public:
         }
         offset_ = *positionPtr_;
         if ((offset_ + actingBlockLength_) > buffer_.size()) [[unlikely]] {
-            throw std::runtime_error{"not enought space for next entry for group \"{{ class_cpp_t }}\""};
+            throw std::runtime_error{"not enough space for next entry for group \"{{ class_cpp_t }}\""};
         }
         *positionPtr_ = offset_ + actingBlockLength_;
         ++index_;
@@ -741,7 +741,7 @@ public:
         , actingVersion_{actingVersion}
     {
         if (*positionPtr_ + {{ length.encoded_length }}u > buffer_.size()) {
-          throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
+          throw std::runtime_error{"not enough space for \"{{ class_cpp_t }}\""};
         }
     }
 
@@ -758,7 +758,7 @@ public:
         auto const position = initialPosition_ + {{ length.encoded_length }}u + length * {{ varData.primitive_type.size }}u;
 {% endif %}
         if (position > buffer_.size()) [[unlikely]] {
-            throw std::runtime_error{"not enought buffer size for \"{{ class_cpp_t }}\""};
+            throw std::runtime_error{"not enough buffer size for \"{{ class_cpp_t }}\""};
         }
         *positionPtr_ = position;
         return {{ value_cpp_t }}{data, length};
@@ -773,7 +773,7 @@ public:
         auto const position = initialPosition_ + {{ length.encoded_length }}u + val.size() * {{ varData.primitive_type.size }}u;
 {% endif %}
         if (position > buffer_.size()) [[unlikely]] {
-            throw std::runtime_error{"not enought space for \"{{ class_cpp_t }}\""};
+            throw std::runtime_error{"not enough space for \"{{ class_cpp_t }}\""};
         }
         std::copy_n(val.data(), val.size(), data);
         *positionPtr_ = position;
