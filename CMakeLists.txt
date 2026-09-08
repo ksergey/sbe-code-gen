@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 3.14)
 
 project(sbe-code-gen)
 
+option(sbe_code_gen_BUILD_TESTS "Build tests (*_test.cpp files, linked against doctest)" ON)
+
 include(cmake/Utils.cmake)
+include(cmake/GetCPM.cmake)
 
 # TODO: setup env should be done once?
 
@@ -59,7 +62,10 @@ function(sbe_make_codec TARGET)
     target_precompile_headers(${TARGET} INTERFACE ${destDir}/schema.h)
 endfunction()
 
-enable_testing()
+if (sbe_code_gen_BUILD_TESTS)
+    enable_testing()
+    CPMAddPackage("gh:doctest/doctest@2.5.2")
+    add_subdirectory(tests)
+endif()
 
-add_subdirectory(tests)
 add_subdirectory(example EXCLUDE_FROM_ALL)
