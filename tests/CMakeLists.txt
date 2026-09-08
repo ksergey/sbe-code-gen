@@ -2,7 +2,7 @@ add_subdirectory(binance EXCLUDE_FROM_ALL)
 
 file(GLOB Sources "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
-sbe_make_codec(spot_3_1
+SbeMakeCodec(spot_3_1
     SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/../resources/spot_3_1.xml
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/spot_3_1
     GENERATOR cpp-min

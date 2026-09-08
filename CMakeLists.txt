@@ -9,7 +9,7 @@ include(cmake/GetCPM.cmake)
 
 # TODO: setup env should be done once?
 
-function(sbe_make_codec TARGET)
+function(SbeMakeCodec TARGET)
     set(options)
     set(oneValueArgs SCHEMA OUTPUT GENERATOR INCLUDE_BASE PACKAGE)
     set(multiValueArgs)
@@ -30,7 +30,7 @@ function(sbe_make_codec TARGET)
     endif()
 
     if (NOT PARSED_GENERATOR)
-        set(PARSED_GENERATOR cpp)
+        set(PARSED_GENERATOR cpp-min)
     endif()
 
     set(cppCodegenRoot ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
@@ -67,5 +67,3 @@ if (sbe_code_gen_BUILD_TESTS)
     CPMAddPackage("gh:doctest/doctest@2.5.2")
     add_subdirectory(tests)
 endif()
-
-add_subdirectory(example EXCLUDE_FROM_ALL)
