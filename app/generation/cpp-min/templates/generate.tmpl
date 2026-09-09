@@ -81,6 +81,149 @@ struct MP_MatchRefName {
     };
 };
 
+// Reads/writes a trivially-copyable scalar at `ptr`, which may not satisfy alignof(T)
+// (SBE field offsets are packed and are not guaranteed to be aligned). A direct
+// `*std::bit_cast<T*>(ptr)` dereference of an unaligned pointer is undefined behaviour;
+// memcpy is the standard-sanctioned way to do this regardless of alignment, and compilers
+// turn it back into a plain unaligned load/store when they can.
+template <typename T>
+[[nodiscard]] inline auto loadUnaligned(std::byte const* ptr) noexcept -> T {
+    T value;
+    std::memcpy(&value, ptr, sizeof(T));
+    return value;
+}
+
+template <typename T>
+inline auto storeUnaligned(std::byte* ptr, T const& value) noexcept -> void {
+    std::memcpy(ptr, &value, sizeof(T));
+}
+
+// A view over a single scalar at a possibly-unaligned address that transparently converts
+// between the schema's declared byte order and native byte order on every read/write -
+// like a single-element std::span, but byte-order-aware. Reads/writes go through
+// loadUnaligned/storeUnaligned, so this is also safe regardless of alignment.
+template <typename T>
+class EndianValueRef {
+public:
+    constexpr explicit EndianValueRef(std::byte* ptr) noexcept : ptr_{ptr} {}
+
+    [[nodiscard]] operator T() const noexcept {
+        return swap(loadUnaligned<T>(ptr_));
+    }
+
+    auto operator=(T value) const noexcept -> EndianValueRef const& {
+        storeUnaligned(ptr_, swap(value));
+        return *this;
+    }
+
+private:
+    [[nodiscard]] static auto swap([[maybe_unused]] T value) noexcept -> T {
+{% if schema.byte_order == 'littleEndian' %}
+        if constexpr (std::endian::native == std::endian::big) {
+{% elif schema.byte_order == 'bigEndian' %}
+        if constexpr (std::endian::native == std::endian::little) {
+{% endif %}
+            if constexpr (std::is_same_v<T, float>) {
+                return std::bit_cast<float>(std::byteswap(std::bit_cast<std::uint32_t>(value)));
+            } else if constexpr (std::is_same_v<T, double>) {
+                return std::bit_cast<double>(std::byteswap(std::bit_cast<std::uint64_t>(value)));
+            } else {
+                return std::byteswap(value);
+            }
+        }
+        return value;
+    }
+
+    std::byte* ptr_;
+};
+
+// A read-only, span-like view over a fixed-length array of scalars stored in the schema's
+// byte order at a possibly-unaligned address. Nothing is converted up front: each element
+// is loaded and byte-swapped only when it is actually accessed, so iterating a subset of a
+// large array costs only what is read. Elements are returned by value (not by reference),
+// since the stored representation may differ from the native one.
+template <typename T, std::size_t N>
+class EndianSpan {
+public:
+    using value_type = T;
+    using size_type = std::size_t;
+
+    class Iterator {
+    public:
+        using iterator_category = std::random_access_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+
+        constexpr Iterator() noexcept = default;
+        constexpr Iterator(std::byte const* ptr, difference_type index) noexcept : ptr_{ptr}, index_{index} {}
+
+        [[nodiscard]] auto operator*() const noexcept -> T {
+            return EndianSpan::load(ptr_, static_cast<size_type>(index_));
+        }
+        [[nodiscard]] auto operator[](difference_type n) const noexcept -> T {
+            return EndianSpan::load(ptr_, static_cast<size_type>(index_ + n));
+        }
+        constexpr auto operator++() noexcept -> Iterator& { ++index_; return *this; }
+        constexpr auto operator++(int) noexcept -> Iterator { auto tmp = *this; ++index_; return tmp; }
+        constexpr auto operator--() noexcept -> Iterator& { --index_; return *this; }
+        constexpr auto operator--(int) noexcept -> Iterator { auto tmp = *this; --index_; return tmp; }
+        constexpr auto operator+=(difference_type n) noexcept -> Iterator& { index_ += n; return *this; }
+        constexpr auto operator-=(difference_type n) noexcept -> Iterator& { index_ -= n; return *this; }
+        [[nodiscard]] friend constexpr auto operator+(Iterator it, difference_type n) noexcept -> Iterator { return it += n; }
+        [[nodiscard]] friend constexpr auto operator+(difference_type n, Iterator it) noexcept -> Iterator { return it += n; }
+        [[nodiscard]] friend constexpr auto operator-(Iterator it, difference_type n) noexcept -> Iterator { return it -= n; }
+        [[nodiscard]] friend constexpr auto operator-(Iterator const& a, Iterator const& b) noexcept -> difference_type { return a.index_ - b.index_; }
+        [[nodiscard]] friend constexpr auto operator==(Iterator const& a, Iterator const& b) noexcept -> bool { return a.index_ == b.index_; }
+        [[nodiscard]] friend constexpr auto operator<=>(Iterator const& a, Iterator const& b) noexcept { return a.index_ <=> b.index_; }
+
+    private:
+        std::byte const* ptr_ = nullptr;
+        difference_type index_ = 0;
+    };
+
+    constexpr explicit EndianSpan(std::byte const* ptr) noexcept : ptr_{ptr} {}
+
+    [[nodiscard]] auto operator[](size_type index) const noexcept -> T {
+        return load(ptr_, index);
+    }
+
+    [[nodiscard]] auto at(size_type index) const -> T {
+        if (index >= N) [[unlikely]] {
+            throw std::out_of_range{"EndianSpan index out of range"};
+        }
+        return load(ptr_, index);
+    }
+
+    [[nodiscard]] static constexpr auto size() noexcept -> size_type { return N; }
+    [[nodiscard]] static constexpr auto empty() noexcept -> bool { return N == 0; }
+    [[nodiscard]] auto front() const noexcept -> T { return load(ptr_, 0); }
+    [[nodiscard]] auto back() const noexcept -> T { return load(ptr_, N - 1); }
+    [[nodiscard]] constexpr auto begin() const noexcept -> Iterator { return Iterator{ptr_, 0}; }
+    [[nodiscard]] constexpr auto end() const noexcept -> Iterator { return Iterator{ptr_, static_cast<std::ptrdiff_t>(N)}; }
+
+private:
+    [[nodiscard]] static auto load(std::byte const* ptr, size_type index) noexcept -> T {
+        T value;
+        std::memcpy(&value, ptr + index * sizeof(T), sizeof(T));
+{% if schema.byte_order == 'littleEndian' %}
+        if constexpr (std::endian::native == std::endian::big) {
+{% elif schema.byte_order == 'bigEndian' %}
+        if constexpr (std::endian::native == std::endian::little) {
+{% endif %}
+            if constexpr (std::is_same_v<T, float>) {
+                return std::bit_cast<float>(std::byteswap(std::bit_cast<std::uint32_t>(value)));
+            } else if constexpr (std::is_same_v<T, double>) {
+                return std::bit_cast<double>(std::byteswap(std::bit_cast<std::uint64_t>(value)));
+            } else {
+                return std::byteswap(value);
+            }
+        }
+        return value;
+    }
+
+    std::byte const* ptr_;
+};
+
 {%- endmacro %}
 
 {% macro swap_byte_order(val, primitive_type) %}
@@ -602,7 +745,7 @@ public:
         index_ = 0;
         actingBlockLength_ = {{ group.block_length }}u;
 
-        auto dimension = {{ dimension_cpp_t }}{buffer_.data() + *positionPtr_};
+        auto dimension = {{ dimension_cpp_t }}{buffer_.data() + initialPosition_};
         dimension.get<"blockLength">().value({{ group.block_length }}u);
         dimension.get<"numInGroup">().value(count_);
 
@@ -750,7 +893,7 @@ public:
     }
 
     [[nodiscard]] constexpr auto value() -> {{ value_cpp_t }} {
-        auto const length = *std::bit_cast<{{ length_cpp_t }} const*>(buffer_.data() + initialPosition_);
+        {{ length_cpp_t }} const length = EndianValueRef<{{ length_cpp_t }}>{buffer_.data() + initialPosition_};
         auto const data = std::bit_cast<{{ enc_cpp_t }} const*>(buffer_.data() + initialPosition_ + {{ length.encoded_length }}u);
 {% if varData.primitive_type.size == 1 %}
         auto const position = initialPosition_ + {{ length.encoded_length }}u + length;
@@ -765,7 +908,10 @@ public:
     }
 
     constexpr auto value({{ value_cpp_t }} val) -> {{ class_cpp_t }}& {
-        *std::bit_cast<{{ length_cpp_t }}*>(buffer_.data() + initialPosition_) = val.size();
+        if (val.size() > ({{ length.max_value | to_cpp_value(length.primitive_type) }})) [[unlikely]] {
+            throw std::runtime_error{"data too long for \"{{ class_cpp_t }}\""};
+        }
+        EndianValueRef<{{ length_cpp_t }}>{buffer_.data() + initialPosition_} = static_cast<{{ length_cpp_t }}>(val.size());
         auto data = std::bit_cast<{{ enc_cpp_t }}*>(buffer_.data() + initialPosition_ + {{ length.encoded_length }}u);
 {% if varData.primitive_type.size == 1 %}
         auto const position = initialPosition_ + {{ length.encoded_length }}u + val.size();
@@ -792,6 +938,8 @@ public:
 {% if type.length > 1 %}
     {% if type.primitive_type.name == 'char' %}
         {% set value_cpp_t = 'std::string_view' %}
+    {% elif type.primitive_type.size != 1 %}
+        {% set value_cpp_t = 'EndianSpan<' ~ enc_cpp_t ~ ', ' ~ type.length ~ 'u>' %}
     {% else %}
         {% set value_cpp_t = 'std::span<' ~ enc_cpp_t ~ ' const>' %}
     {% endif %}
@@ -828,7 +976,7 @@ struct {{ class_cpp_t }} {
 
     {# present() #}
     [[nodiscard]] constexpr auto present() const noexcept -> bool {
-        auto val = *std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr);
+        auto val = loadUnaligned<{{ enc_cpp_t }}>(bufferPtr);
     {% if type.primitive_type.size != 1 %}
         {{ swap_byte_order('val', type.primitive_type) | indent(8) }}
     {% endif %}
@@ -846,11 +994,11 @@ struct {{ class_cpp_t }} {
     {# value() #}
     [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
         {% if type.primitive_type.size != 1 %}
-        auto val = *std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr);
+        auto val = loadUnaligned<{{ enc_cpp_t }}>(bufferPtr);
         {{ swap_byte_order('val', type.primitive_type) | indent(8) }}
         return val;
         {% else %}
-        return *std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr);
+        return loadUnaligned<{{ enc_cpp_t }}>(bufferPtr);
         {% endif %}
     }
 {% elif (is_required or is_optional) and type.primitive_type.name == 'char' and type.length > 1 %}
@@ -866,8 +1014,11 @@ struct {{ class_cpp_t }} {
 
     {# value() #}
     [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
-        // WARNING: endianess and byte-swap!
+    {% if type.primitive_type.size != 1 %}
+        return {{ value_cpp_t }}{bufferPtr};
+    {% else %}
         return {{ value_cpp_t }}{std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr), {{ type.length }}};
+    {% endif %}
     }
 {% elif is_constant %}
 
@@ -891,7 +1042,7 @@ struct {{ class_cpp_t }} {
     {% if type.primitive_type.size != 1 %}
         {{ swap_byte_order('val', type.primitive_type) | indent(8) }}
     {% endif %}
-        *std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr) = val;
+        storeUnaligned(bufferPtr, val);
         return *this;
     }
 {% elif (is_required or is_optional) and type.primitive_type.name == 'char' and type.length > 1 %}
@@ -911,11 +1062,17 @@ struct {{ class_cpp_t }} {
 {% elif (is_required or is_optional) and type.length > 1 %}
 
     {# value(val) #}
-    constexpr auto value({{ value_cpp_t }} val) -> {{ class_cpp_t }}& {
+    constexpr auto value(std::span<{{ enc_cpp_t }} const> val) -> {{ class_cpp_t }}& {
         if (val.size() != {{ type.length }}u) [[unlikely]] {
             throw std::runtime_error{"unexpected data length (\"{{ class_cpp_t }}\")"};
         }
+    {% if type.primitive_type.size != 1 %}
+        for (std::size_t i = 0; i < {{ type.length }}u; ++i) {
+            EndianValueRef<{{ enc_cpp_t }}>{bufferPtr + i * sizeof({{ enc_cpp_t }})} = val[i];
+        }
+    {% else %}
         std::copy_n(val.data(), {{ type.length }}u, std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr));
+    {% endif %}
         return *this;
     }
 {% endif %}
@@ -923,7 +1080,15 @@ struct {{ class_cpp_t }} {
 
     {# reset() #}
     constexpr auto reset() noexcept -> {{ class_cpp_t }}& {
-        *std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr) = {{ type.null_value | to_cpp_value(type.primitive_type) }};
+    {% if (is_required or is_optional) and type.length == 1 %}
+        {{ enc_cpp_t }} val = {{ type.null_value | to_cpp_value(type.primitive_type) }};
+        {% if type.primitive_type.size != 1 %}
+        {{ swap_byte_order('val', type.primitive_type) | indent(8) }}
+        {% endif %}
+        storeUnaligned(bufferPtr, val);
+    {% else %}
+        storeUnaligned<{{ enc_cpp_t }}>(bufferPtr, {{ type.null_value | to_cpp_value(type.primitive_type) }});
+    {% endif %}
         return *this;
     }
 {% endif %}
@@ -975,7 +1140,7 @@ struct {{ class_cpp_t }} {
 
     {# value() #}
     [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
-        auto bits = *std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr);
+        auto bits = loadUnaligned<{{ enc_cpp_t }}>(bufferPtr);
     {% if type.encoding_type.size != 1 %}
         {{ swap_byte_order('bits', type.encoding_type) | indent(8) }}
     {% endif %}
@@ -995,9 +1160,9 @@ struct {{ class_cpp_t }} {
     {% if type.encoding_type.size != 1 %}
         auto bits = static_cast<{{ enc_cpp_t }}>(val);
         {{ swap_byte_order('bits', type.encoding_type) | indent(8) }}
-        *std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr) = bits;
+        storeUnaligned(bufferPtr, bits);
     {% else %}
-        *std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr) = static_cast<{{ enc_cpp_t }}>(val);
+        storeUnaligned<{{ enc_cpp_t }}>(bufferPtr, static_cast<{{ enc_cpp_t }}>(val));
     {% endif %}
         return *this;
     }
@@ -1040,13 +1205,13 @@ struct {{ class_cpp_t }} {
     {# value() #}
     [[nodiscard]] constexpr auto value() const noexcept -> {{ value_cpp_t }} {
     {% if type.encoding_type.size != 1 %}
-        auto bits = *std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr);
+        auto bits = loadUnaligned<{{ enc_cpp_t }}>(bufferPtr);
     {% if type.encoding_type.size != 1 %}
         {{ swap_byte_order('bits', type.encoding_type) | indent(8) }}
     {% endif %}
         return {{ value_cpp_t }}(bits);
     {% else %}
-        return {{ value_cpp_t }}{*std::bit_cast<{{ enc_cpp_t }} const*>(bufferPtr)};
+        return {{ value_cpp_t }}{loadUnaligned<{{ enc_cpp_t }}>(bufferPtr)};
     {% endif %}
     }
 
@@ -1055,9 +1220,9 @@ struct {{ class_cpp_t }} {
     {% if type.encoding_type.size != 1 %}
         auto bits = static_cast<{{ enc_cpp_t }}>(val);
         {{ swap_byte_order('bits', type.encoding_type) | indent(8) }}
-        *std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr) = bits;
+        storeUnaligned(bufferPtr, bits);
     {% else %}
-        *std::bit_cast<{{ enc_cpp_t }}*>(bufferPtr) = static_cast<{{ enc_cpp_t }}>(val);
+        storeUnaligned<{{ enc_cpp_t }}>(bufferPtr, static_cast<{{ enc_cpp_t }}>(val));
     {% endif %}
         return *this;
     }

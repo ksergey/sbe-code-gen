@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -20,7 +21,17 @@ def _load_module(path: Path, name: str):
 
 @pytest.fixture(scope='session')
 def generated_schema(tmp_path_factory):
-    dest = tmp_path_factory.mktemp('codec') / 'python'
+    # When run through CTest, tests/CMakeLists.txt points this at
+    # CMAKE_CURRENT_BINARY_DIR so the generated schema.py lands inside the
+    # build tree (inspectable, cleaned up with the rest of build/) instead of
+    # an ephemeral pytest tmp dir. Running pytest directly (as CI's
+    # standalone python job and local `pytest tests/test_python_codec.py`
+    # both do) has no such build dir, so fall back to tmp_path_factory.
+    dest_root = os.environ.get('SBE_CODE_GEN_PYTHON_CODEC_DIR')
+    if dest_root:
+        dest = Path(dest_root) / 'python'
+    else:
+        dest = tmp_path_factory.mktemp('codec') / 'python'
     subprocess.run(
         [sys.executable, '-m', 'app',
          '--schema', str(SPOT_SCHEMA),
