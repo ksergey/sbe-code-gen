@@ -38,7 +38,7 @@ function(SbeMakeCodec TARGET)
         set(PARSED_GENERATOR cpp-min)
     endif()
 
-    set(cppCodegenRoot ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/..)
+    get_filename_component(cppCodegenRoot "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
     set(pythonEnvRoot ${PROJECT_BINARY_DIR}/venv)
     set(pythonEnvExe ${PROJECT_BINARY_DIR}/venv/bin/python)
 
