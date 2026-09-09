@@ -602,7 +602,7 @@ public:
         index_ = 0;
         actingBlockLength_ = {{ group.block_length }}u;
 
-        auto dimension = {{ dimension_cpp_t }}{buffer_.data() + *positionPtr_};
+        auto dimension = {{ dimension_cpp_t }}{buffer_.data() + initialPosition_};
         dimension.get<"blockLength">().value({{ group.block_length }}u);
         dimension.get<"numInGroup">().value(count_);
 
