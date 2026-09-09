@@ -6,6 +6,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from typing import Optional
+import os
 from app.schema import *
 
 class GeneratorBase(ABC):
@@ -32,6 +33,15 @@ class GeneratorBase(ABC):
             ir['messages'].append(GeneratorBase.make_message_definition(message))
         self._generate_impl(ir)
 
+    def generate_document(self, document_name: str, template_name: str, **kwargs) -> None:
+        template = self.env.get_template(template_name)
+        document_path = f'{self.path}/{document_name}'
+        document_content = template.render(**kwargs)
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
+        with open(document_path, mode='w', encoding='utf8') as document:
+            document.write(document_content)
+
     @staticmethod
     def make_encoded_type_definition(encoded_type: EncodedType) -> dict:
         assert isinstance(encoded_type, (Type, Composite, Enum, Set))
@@ -50,7 +60,7 @@ class GeneratorBase(ABC):
             'name': primitive_type.name,
             'size': primitive_type.size,
             'null_value': primitive_type.null_value,
-            'max_value': primitive_type.min_value,
+            'min_value': primitive_type.min_value,
             'max_value': primitive_type.max_value
         }
 

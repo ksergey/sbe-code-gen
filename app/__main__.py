@@ -4,14 +4,14 @@
 import importlib
 import traceback
 import sys
-from argparse import ArgumentParser, SUPPRESS
+from argparse import ArgumentParser
 from app.parser import Parser
 
 def main() -> None:
     parser = ArgumentParser(prog='sbe-code-gen', description='SBE codec generator')
     parser.add_argument('--schema', help='path to xml schema', required=True)
     parser.add_argument('--destination', help='path to directory where codec will be written', required=True)
-    parser.add_argument('--generator', help='choose generator (available: cpp)', default='cpp')
+    parser.add_argument('--generator', help='choose generator (available: cpp-min, python)', default='cpp-min')
     parser.add_argument('--package', help='override schema package property')
 
     args = parser.parse_args()
@@ -23,7 +23,7 @@ def main() -> None:
         generator = Generator(args.destination)
         generator.generate(schema, package=args.package)
     except Exception as e:
-        sys.exit(traceback.format_exc())
+        traceback.print_exc(file=sys.stderr)
         sys.exit(f'error: {e}')
 
 if __name__ == '__main__':

@@ -3,7 +3,6 @@
 
 from jinja2 import Environment, FileSystemLoader
 import pathlib
-import os
 
 from app.generator import GeneratorBase
 
@@ -20,19 +19,7 @@ class Generator(GeneratorBase):
         self.add_filters()
 
     def _generate_impl(self, schema: dict) -> None:
-        self.ensure_path_exists()
         self.generate_document('schema.h', 'schema.tmpl', schema=schema)
-
-    def generate_document(self, document_name: str, template_name: str, **kwargs) -> None:
-        template = self.env.get_template(template_name)
-        document_path = f'{self.path}/{document_name}'
-        document_content = template.render(**kwargs)
-        with open(document_path, mode='w', encoding='utf8') as document:
-            document.write(document_content)
-
-    def ensure_path_exists(self) -> None:
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
 
     def add_filters(self) -> None:
         self.env.filters['fmt_class_type'] = lambda s: s[0].upper() + s[1:]

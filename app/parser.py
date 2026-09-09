@@ -7,7 +7,7 @@ from typing import Optional, Dict, Union, Tuple
 from collections import UserDict
 from app.schema import *
 from app.xml import *
-import numpy as np
+from app.constants import decode_primitive_constant
 
 class UniqueKeysDict(UserDict):
     def __setitem__(self, key, value):
@@ -505,50 +505,5 @@ class Parser:
         template_id_type = header_type.find_type('templateId')
         template_id_min_value = template_id_type.min_value or template_id_type.primitive_type.min_value
         template_id_max_value = template_id_type.max_value or template_id_type.primitive_type.max_value
-        return template_id in range(Parser.decode_primitive_type_value(template_id_min_value),
-                                    Parser.decode_primitive_type_value(template_id_max_value))
-
-    '''
-    Decode value like UINT8_MIN, UINT16_MAX, etc into exactly constant
-    i.e.
-        UINT8_MIN -> 0
-        UINT8_MAX -> 254
-        UINT8_NULL -> 255
-    '''
-    @staticmethod
-    def decode_primitive_type_value(value: str):
-        return {
-            'CHAR_NULL':    0,
-            'CHAR_MIN':     0x20,
-            'CHAR_MAX':     0x7e,
-            'INT8_NULL':    np.iinfo(np.int8).min,
-            'INT8_MIN':     np.iinfo(np.int8).min + 1,
-            'INT8_MAX':     np.iinfo(np.int8).max,
-            'INT16_NULL':   np.iinfo(np.int16).min,
-            'INT16_MIN':    np.iinfo(np.int16).min + 1,
-            'INT16_MAX':    np.iinfo(np.int16).max,
-            'INT32_NULL':   np.iinfo(np.int32).min,
-            'INT32_MIN':    np.iinfo(np.int32).min + 1,
-            'INT32_MAX':    np.iinfo(np.int32).max,
-            'INT64_NULL':   np.iinfo(np.int64).min,
-            'INT64_MIN':    np.iinfo(np.int64).min + 1,
-            'INT64_MAX':    np.iinfo(np.int64).max,
-            'UINT8_NULL':   np.iinfo(np.uint8).max,
-            'UINT8_MIN':    np.iinfo(np.uint8).min,
-            'UINT8_MAX':    np.iinfo(np.uint8).max - 1,
-            'UINT16_NULL':  np.iinfo(np.uint16).max,
-            'UINT16_MIN':   np.iinfo(np.uint16).min,
-            'UINT16_MAX':   np.iinfo(np.uint16).max - 1,
-            'UINT32_NULL':  np.iinfo(np.uint32).max,
-            'UINT32_MIN':   np.iinfo(np.uint32).min,
-            'UINT32_MAX':   np.iinfo(np.uint32).max - 1,
-            'UINT64_NULL':  np.iinfo(np.uint64).max,
-            'UINT64_MIN':   np.iinfo(np.uint64).min,
-            'UINT64_MAX':   np.iinfo(np.uint64).max - 1,
-            'FLOAT_NULL':   np.float32(np.nan),
-            'FLOAT_MIN':    np.finfo(np.float32).min,
-            'FLOAT_MAX':    np.finfo(np.float32).max,
-            'DOUBLE_NULL':  np.float64(np.nan),
-            'DOUBLE_MIN':   np.finfo(np.float64).min,
-            'DOUBLE_MAX':   np.finfo(np.float64).max
-        }.get(value, value)
+        return template_id in range(decode_primitive_constant(template_id_min_value),
+                                    decode_primitive_constant(template_id_max_value))

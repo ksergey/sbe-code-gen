@@ -40,7 +40,8 @@ function(SbeMakeCodec TARGET)
 
     get_filename_component(cppCodegenRoot "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
     set(pythonEnvRoot ${PROJECT_BINARY_DIR}/venv)
-    set(pythonEnvExe ${PROJECT_BINARY_DIR}/venv/bin/python)
+    file(REAL_PATH "${pythonEnvRoot}" pythonEnvRoot)
+    set(pythonEnvExe ${pythonEnvRoot}/bin/python)
 
     # Setup venv once per top-level project, no matter how many times or from
     # which subdirectory SbeMakeCodec() is called.
@@ -50,6 +51,7 @@ function(SbeMakeCodec TARGET)
             COMMAND ${Python3_EXECUTABLE} -m venv ${pythonEnvRoot}
             COMMAND ${pythonEnvExe} -m pip install --upgrade pip
             COMMAND ${pythonEnvExe} -m pip install -r ${cppCodegenRoot}/requirements.txt
+            WORKING_DIRECTORY ${cppCodegenRoot}
             COMMENT "Creating python virtualenv at ${pythonEnvRoot}"
         )
         add_custom_target(sbe-code-gen-venv DEPENDS ${pythonEnvExe} ${pythonEnvRoot}/pyvenv.cfg)

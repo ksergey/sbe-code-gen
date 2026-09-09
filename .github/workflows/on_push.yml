@@ -23,6 +23,8 @@ jobs:
       run: python -m app --schema=resources/b3-market-data-messages-1.3.1.xml --destination=$PWD/b3-market-data-messages
     - name: Generate FixBinary.xml
       run: python -m app --schema=resources/FixBinary.xml --destination=$PWD/FixBinary
+    - name: Run python codec round-trip tests
+      run: pytest -q tests/test_python_codec.py
 
   build:
     name: ${{ matrix.build_type }} build with ${{ matrix.compiler }} on ${{ matrix.os }}
@@ -105,7 +107,7 @@ jobs:
               -DCMAKE_C_COMPILER=${{ env.CC }}
               -DCMAKE_CXX_COMPILER=${{ env.CXX }}
               -DCMAKE_VERBOSE_MAKEFILE=ON
-              -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
             RESULT_VARIABLE result
           )
           if (NOT result EQUAL 0)
