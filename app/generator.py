@@ -118,6 +118,7 @@ class GeneratorBase(ABC):
             'semantic_type': composite_type.semantic_type,
             'since_version': composite_type.since_version,
             'deprecated': composite_type.deprecated,
+            'presence': Presence.REQUIRED.value,
             'contained_types': contained_types,
             'encoded_length': composite_type.encoded_length(),
             'inplace': composite_type.inplace

@@ -2,6 +2,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license
 
 from jinja2 import Environment, FileSystemLoader
+import math
 import pathlib
 
 from app.generator import GeneratorBase
@@ -51,4 +52,7 @@ class Generator(GeneratorBase):
 
     @staticmethod
     def filter_replace_keyword(value: str) -> str:
-        return decode_primitive_constant(value)
+        result = decode_primitive_constant(value)
+        if isinstance(result, float) and math.isnan(result):
+            return "float('nan')"
+        return result

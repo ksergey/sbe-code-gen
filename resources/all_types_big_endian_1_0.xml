@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   description="Test schema covering all SBE data types and message constructs (big endian)."
+                   byteOrder="bigEndian"
+                   package="alltypes_be"
+                   id="1"
+                   version="1"
+                   semanticVersion="5.2">
+    <types>
+
+        <composite name="messageHeader" description="Template ID and length of message root">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="templateId" primitiveType="uint16"/>
+            <type name="schemaId" primitiveType="uint16"/>
+            <type name="version" primitiveType="uint16"/>
+        </composite>
+
+        <composite name="groupSizeEncoding" description="Repeating group dimensions (uint32 count).">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="numInGroup" primitiveType="uint32" maxValue="2147483647"/>
+        </composite>
+
+        <composite name="groupSize16Encoding" description="Repeating group dimensions (uint16 count).">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="numInGroup" primitiveType="uint16"/>
+        </composite>
+
+        <composite name="groupSize8Encoding" description="Repeating group dimensions (uint8 count).">
+            <type name="blockLength" primitiveType="uint8"/>
+            <type name="numInGroup" primitiveType="uint8"/>
+        </composite>
+
+        <composite name="varString" description="Variable length UTF-8 string (uint16 length).">
+            <type name="length" primitiveType="uint16"/>
+            <type name="varData" length="0" primitiveType="char" characterEncoding="UTF-8"/>
+        </composite>
+
+        <composite name="varString8" description="Variable length UTF-8 string (uint8 length).">
+            <type name="length" primitiveType="uint8"/>
+            <type name="varData" length="0" primitiveType="char" characterEncoding="UTF-8"/>
+        </composite>
+
+        <composite name="varData16" description="Variable length binary data (uint16 length, uint8 elements).">
+            <type name="length" primitiveType="uint16"/>
+            <type name="varData" length="0" primitiveType="uint8"/>
+        </composite>
+
+        <composite name="messageData" description="Variable length binary data (uint32 length, uint8 elements).">
+            <type name="length" primitiveType="uint32" maxValue="2147483647"/>
+            <type name="varData" length="0" primitiveType="uint8"/>
+        </composite>
+
+        <!-- Typedef of a decimal number: mantissa + exponent -->
+        <composite name="decimal" description="Decimal number as mantissa/exponent pair.">
+            <type name="mantissa" primitiveType="int64"/>
+            <type name="exponent" primitiveType="int8"/>
+        </composite>
+
+        <!-- Composite containing an inline nested composite -->
+        <composite name="nestedComposite" description="Composite with an inline nested composite.">
+            <type name="topVal" primitiveType="uint8"/>
+            <composite name="inner" description="Inline nested composite.">
+                <type name="innerVal" primitiveType="int16"/>
+                <type name="innerTag" primitiveType="char" length="2" characterEncoding="US-ASCII"/>
+            </composite>
+        </composite>
+
+        <!-- Fixed length char array (arrays of multi-byte numerics are not supported for big endian) -->
+        <type name="symbolType" primitiveType="char" length="8" characterEncoding="US-ASCII"/>
+        <type name="tagType" primitiveType="char" length="2" characterEncoding="US-ASCII" sinceVersion="1"/>
+
+        <!-- Optional scalar type with explicit range/null attributes -->
+        <type name="optInt16" primitiveType="int16" presence="optional" minValue="-100" maxValue="100" nullValue="-32767"/>
+
+        <!-- Constant encoding types -->
+        <type name="versionStr" primitiveType="char" presence="constant" characterEncoding="US-ASCII">1.0</type>
+        <type name="appVersion" primitiveType="uint16" presence="constant">42</type>
+
+        <!-- Enum types -->
+        <enum name="MessageType" encodingType="uint8">
+            <validValue name="NewOrder">1</validValue>
+            <validValue name="ExecutionReport">2</validValue>
+            <validValue name="Unknown">255</validValue>
+        </enum>
+
+        <enum name="Side" encodingType="char">
+            <validValue name="Buy">B</validValue>
+            <validValue name="Sell">S</validValue>
+        </enum>
+
+        <enum name="BigType" encodingType="uint16">
+            <validValue name="Alpha">1</validValue>
+            <validValue name="Beta">2</validValue>
+            <validValue name="Gamma">3</validValue>
+        </enum>
+
+        <enum name="Bits8" encodingType="uint8" nullValue="7">
+            <validValue name="Off">0</validValue>
+            <validValue name="On">1</validValue>
+        </enum>
+
+        <enum name="WideEnum32" encodingType="uint32" nullValue="4294967295">
+            <validValue name="ValueA">1</validValue>
+            <validValue name="ValueB">1000</validValue>
+        </enum>
+
+        <enum name="WideEnum64" encodingType="uint64">
+            <validValue name="BigA">1</validValue>
+            <validValue name="BigB">5000000000</validValue>
+            <validValue name="BigC">18446744073709551614</validValue>
+        </enum>
+
+        <!-- Set (bit flags) types -->
+        <set name="Flags" encodingType="uint8">
+            <choice name="Bit0">0</choice>
+            <choice name="Bit2">2</choice>
+            <choice name="Bit5">5</choice>
+            <choice name="Bit7">7</choice>
+        </set>
+
+        <set name="BigFlags" encodingType="uint64">
+            <choice name="First">0</choice>
+            <choice name="Top">63</choice>
+        </set>
+
+        <!-- Composite referencing other encoded types via <ref> -->
+        <composite name="outerComposite" description="Composite containing a type, a composite, an enum and a set.">
+            <type name="qty" primitiveType="uint64"/>
+            <ref name="dec" type="decimal"/>
+            <ref name="side" type="Side"/>
+            <ref name="flags" type="Flags"/>
+        </composite>
+
+    </types>
+
+    <sbe:message name="AllTypesMessage" id="1" description="Message covering every SBE data type and message construct.">
+        <!-- primitive types -->
+        <field id="1" name="id" type="int64"/>
+        <field id="2" name="qty" type="uint64"/>
+        <field id="3" name="price" type="int32"/>
+        <field id="4" name="s8" type="int8"/>
+        <field id="5" name="s16" type="int16"/>
+        <field id="6" name="u8" type="uint8"/>
+        <field id="7" name="u16" type="uint16"/>
+        <field id="8" name="u32" type="uint32"/>
+        <field id="9" name="f32" type="float"/>
+        <field id="10" name="f64" type="double"/>
+        <!-- enum and set fields -->
+        <field id="11" name="mType" type="MessageType"/>
+        <field id="12" name="side" type="Side"/>
+        <field id="13" name="bigType" type="BigType"/>
+        <field id="14" name="flags" type="Flags"/>
+        <field id="15" name="bigFlags" type="BigFlags"/>
+        <!-- fixed length char array -->
+        <field id="16" name="symbol" type="symbolType" presence="required"/>
+        <!-- composite fields -->
+        <field id="18" name="decimal1" type="decimal"/>
+        <field id="19" name="outerField" type="outerComposite"/>
+        <!-- more wrapped types -->
+        <field id="28" name="nestedField" type="nestedComposite"/>
+        <field id="29" name="wideEnum32" type="WideEnum32"/>
+        <field id="30" name="wideEnum64" type="WideEnum64"/>
+        <field id="31" name="bits" type="Bits8"/>
+        <field id="32" name="optVal" type="optInt16"/>
+        <!-- optional fields -->
+        <field id="20" name="optPrice" type="int32" presence="optional" nullValue="-1"/>
+        <field id="21" name="optQty" type="uint16" presence="optional"/>
+        <field id="22" name="optDouble" type="double" presence="optional" deprecated="1"/>
+        <field id="23" name="optSide" type="Side" presence="optional"/>
+        <field id="24" name="optString" type="symbolType" presence="optional"/>
+        <!-- constant fields -->
+        <field id="25" name="constEnum" type="MessageType" presence="constant" valueRef="MessageType.ExecutionReport"/>
+        <field id="26" name="constStr" type="versionStr"/>
+        <field id="27" name="constNum" type="appVersion"/>
+
+        <!-- repeating group with a nested group and variable length data inside -->
+        <group id="100" name="entries">
+            <field id="1" name="seq" type="uint8"/>
+            <field id="2" name="amount" type="int64"/>
+            <field id="3" name="tag" type="tagType" presence="required"/>
+            <field id="4" name="tflags" type="Flags"/>
+            <field id="5" name="ttype" type="MessageType"/>
+            <field id="6" name="tDec" type="decimal"/>
+            <group id="100" name="sub" dimensionType="groupSize16Encoding">
+                <field id="1" name="subId" type="uint16"/>
+                <field id="2" name="subVal" type="int32"/>
+            </group>
+            <data id="200" name="note" type="varString8"/>
+        </group>
+
+        <!-- repeating group with uint16 numInGroup dimension -->
+        <group id="101" name="buckets" dimensionType="groupSize16Encoding">
+            <field id="1" name="bucketId" type="uint64"/>
+            <field id="2" name="weight" type="float"/>
+        </group>
+
+        <!-- repeating group with variable length data entries -->
+        <group id="102" name="blobRecords">
+            <field id="1" name="recordId" type="uint32"/>
+            <data id="200" name="label" type="varString"/>
+            <data id="201" name="payload" type="varData16"/>
+        </group>
+
+        <!-- repeating group with uint8 numInGroup dimension -->
+        <group id="103" name="ticks" dimensionType="groupSize8Encoding">
+            <field id="1" name="tickValue" type="int32"/>
+            <field id="2" name="tickTag" type="uint8"/>
+        </group>
+
+        <!-- variable length data fields -->
+        <data id="200" name="traceId" type="varString8"/>
+        <data id="201" name="summary" type="varString"/>
+        <data id="202" name="blob" type="varData16"/>
+        <data id="203" name="bigBlob" type="messageData"/>
+    </sbe:message>
+
+    <sbe:message name="EmptyMessage" id="2" description="Message with no fields (blockLength = 0).">
+    </sbe:message>
+
+    <sbe:message name="DataOnlyMessage" id="3" description="Message with only variable length data.">
+        <data id="200" name="payload" type="varString8"/>
+    </sbe:message>
+
+</sbe:messageSchema>
