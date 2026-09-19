@@ -1,92 +1,118 @@
+# Copyright (C) 2024 Sergey Kovalevich <inndie@gmail.com>
+# This file may be distributed under the terms of the GNU GPLv3 license
+#
+# Generated simple binary encoding message codec
+# Message codec generator: https://github.com/ksergey/sbe-code-gen
+
 {% import 'generate.tmpl' as generate %}
+from __future__ import annotations
+
 import struct
-import sys
-
+from dataclasses import dataclass, field as dataclasses_field
 from enum import Enum, Flag
-from typing import Any, Union, Optional
+from typing import Any, ClassVar, List, Optional
 
-# Codec encode/decode context
+
 class CodecContext:
-    def __init__(self, buffer: Union[bytes, bytearray, memoryview], offset: int = 0) -> None:
-        self.buffer = buffer
+    """A cursor over a growable buffer. `reserve()` extends the buffer with
+    zero bytes on demand, so encoding never requires guessing a buffer size
+    up front - callers never pre-allocate."""
+
+    __slots__ = ('buffer', 'offset')
+
+    def __init__(self, buffer: Optional[bytearray] = None, offset: int = 0) -> None:
+        self.buffer = buffer if buffer is not None else bytearray()
         self.offset = offset
 
+    def reserve(self, size: int) -> None:
+        end = self.offset + size
+        if len(self.buffer) < end:
+            self.buffer.extend(bytes(end - len(self.buffer)))
+
+
 {% for type in schema.types %}
-  {% if type.token == 'composite' and type.name == 'messageHeader' %}
-{{ generate.define_composite(type, schema) }}
-  {% elif type.token == 'enum' %}
+{% if type.token == 'enum' %}
 {{ generate.define_enum(type, schema) }}
-  {% elif type.token == 'set' %}
+{% elif type.token == 'set' %}
 {{ generate.define_set(type, schema) }}
-  {% endif %}
+{% endif %}
+{% endfor %}
+
+{% for type in schema.types %}
+{% if type.token == 'composite' %}
+{{ generate.define_composite(type, schema) }}
+{% endif %}
 {% endfor %}
 
 {% for message in schema.messages %}
 {{ generate.define_message(message, schema) }}
 {% endfor %}
 
+
+@dataclass(frozen=True)
+class DecodedMessage:
+    """Result of decode(): the message header (schemaId/version/templateId/
+    blockLength - information about the decoded message) plus the decoded
+    message itself as a typed object."""
+    header: MessageHeader
+    message: Any
+
+
 class Schema:
-    SCHEMA_ID = {{ schema.id }}
-    VERSION = {{ schema.version }}
+    SCHEMA_ID: ClassVar[int] = {{ schema.id }}
+    VERSION: ClassVar[int] = {{ schema.version }}
 
-    MESSAGES = dict([
+    _CODEC_BY_TEMPLATE_ID: ClassVar[dict] = {
 {% for message in schema.messages %}
-        ({{ message.id }}, {{ message.name | format_message_name }}),
+        {{ message.id }}: {{ message.name | format_message_name }},
 {% endfor %}
-    ])
+    }
 
     @staticmethod
-    def getCodecCls(template_id: int):
-        codec = Schema.MESSAGES.get(template_id)
-        if not codec:
-            raise Exception(f'codec for message with templateId={template_id} not found')
-        return codec
+    def getCodecCls(template_id: int) -> Any:
+        cls = Schema._CODEC_BY_TEMPLATE_ID.get(template_id)
+        if cls is None:
+            raise ValueError(f'no codec registered for templateId={template_id}')
+        return cls
 
     @staticmethod
-    def encode(ctx: CodecContext, value: Any, *, cls=None, template_id: Optional[int] = None) -> None:
-        assert cls or template_id, 'cls or template_id argument required'
-        if not cls:
+    def encode(ctx: CodecContext, message: Any, *, cls: Any = None, template_id: Optional[int] = None) -> None:
+        if cls is None:
+            if template_id is None:
+                raise ValueError('either cls or template_id argument is required')
             cls = Schema.getCodecCls(template_id)
-        MessageHeader.pack(ctx, {
-            'blockLength': cls.BLOCK_LENGTH,
-            'templateId': cls.TEMPLATE_ID,
-            'schemaId': {{ schema.id }},
-            'version': {{ schema.version }}
-        })
+        header = MessageHeader(
+            blockLength=cls.BLOCK_LENGTH,
+            templateId=cls.TEMPLATE_ID,
+            schemaId=Schema.SCHEMA_ID,
+            version=Schema.VERSION,
+        )
+        MessageHeader.pack(ctx, header)
         ctx.offset += MessageHeader.ENCODED_LENGTH
-        return cls.pack(ctx, value)
+        cls.pack(ctx, message)
 
     @staticmethod
-    def decode(ctx: CodecContext) -> tuple:
+    def decode(ctx: CodecContext) -> DecodedMessage:
         header = MessageHeader.unpack(ctx)
-        cls = Schema.getCodecCls(header.get('templateId'))
+        if header.schemaId != Schema.SCHEMA_ID:
+            raise ValueError(
+                f'message declares schemaId={header.schemaId}, this codec decodes schemaId={Schema.SCHEMA_ID}')
+        cls = Schema.getCodecCls(header.templateId)
         ctx.offset += MessageHeader.ENCODED_LENGTH
-        return (cls, cls.unpack(ctx, header.get('blockLength')))
+        message = cls.unpack(ctx, header.blockLength)
+        return DecodedMessage(header=header, message=message)
 
 
-def encode(cls, data: object = None, *, buffer_size = 512) -> bytearray:
-    buffer = bytearray(buffer_size)
-    ctx = CodecContext(buffer)
-    Schema.encode(ctx, data or {}, cls=cls)
-    return ctx.buffer[:ctx.offset]
+def encode(cls: Any, message: Any) -> bytes:
+    """Encode `message` (an instance of `cls`) and return the wire bytes.
+    The buffer grows on demand - no buffer size needs to be known ahead of time."""
+    ctx = CodecContext()
+    Schema.encode(ctx, message, cls=cls)
+    return bytes(ctx.buffer[:ctx.offset])
 
-def decode(buffer: Union[bytes, bytearray, memoryview]) -> tuple:
-    ctx = CodecContext(buffer)
+
+def decode(buffer: bytes) -> DecodedMessage:
+    """Decode a message from `buffer` and return its header info together
+    with the decoded message as a typed object (`result.message`)."""
+    ctx = CodecContext(bytearray(buffer))
     return Schema.decode(ctx)
-
-# Example
-#
-# create CodecContext:
-# buffer = bytearray(64)
-# ctx = CodecContext(buffer)
-#
-# encode:
-# Schema.encode(ctx, { 'nextSeqNo': 1234 }, template_id=2)
-# ... or ...
-# Schema.encode(ctx, { 'nextSeqNo': 1234 }, cls=Sequence_2Message)
-# print(f'encoded size: {ctx.offset}')
-#
-# decode:
-# ctx.offset = 0 # reset cursor
-# print(Schema.decode(ctx))
-

@@ -32,6 +32,23 @@ class Generator(GeneratorBase):
         self.env.filters['replace_keyword']  = Generator.filter_replace_keyword
         self.env.filters['bit_to_value'] = lambda value: 1 << int(value)
         self.env.filters['struct_fmt'] = Generator.filter_struct_fmt
+        self.env.filters['as_member'] = Generator.filter_field_as_member
+
+    @staticmethod
+    def filter_field_as_member(field: dict) -> dict:
+        """A message/group-level <field> stores its type info under
+        field['type'] while presence/offset/name live on the field itself; a
+        composite's contained_types entries already carry everything on one
+        dict. Normalize the former to the latter's shape so pack/unpack code
+        generation can treat both uniformly."""
+        if field.get('token') != 'field':
+            return field
+        member = dict(field['type'])
+        member['presence'] = field['presence']
+        member['offset'] = field['offset']
+        member['value_ref'] = field.get('value_ref')
+        member['reference_name'] = field['name']
+        return member
 
     @staticmethod
     def filter_struct_fmt(value: str) -> str:

@@ -22,9 +22,11 @@
 template <std::size_t N>
 struct CtStr {
     char data[N];
+
     consteval CtStr(char const* str) noexcept {
         std::copy_n(str, N, data);
     }
+
     [[nodiscard]] constexpr operator std::string_view() const noexcept {
         return std::string_view{data, N - 1};
     }
@@ -155,26 +157,71 @@ public:
         using difference_type = std::ptrdiff_t;
 
         constexpr Iterator() noexcept = default;
+
         constexpr Iterator(std::byte const* ptr, difference_type index) noexcept : ptr_{ptr}, index_{index} {}
 
         [[nodiscard]] auto operator*() const noexcept -> T {
             return EndianSpan::load(ptr_, static_cast<size_type>(index_));
         }
+
         [[nodiscard]] auto operator[](difference_type n) const noexcept -> T {
             return EndianSpan::load(ptr_, static_cast<size_type>(index_ + n));
         }
-        constexpr auto operator++() noexcept -> Iterator& { ++index_; return *this; }
-        constexpr auto operator++(int) noexcept -> Iterator { auto tmp = *this; ++index_; return tmp; }
-        constexpr auto operator--() noexcept -> Iterator& { --index_; return *this; }
-        constexpr auto operator--(int) noexcept -> Iterator { auto tmp = *this; --index_; return tmp; }
-        constexpr auto operator+=(difference_type n) noexcept -> Iterator& { index_ += n; return *this; }
-        constexpr auto operator-=(difference_type n) noexcept -> Iterator& { index_ -= n; return *this; }
-        [[nodiscard]] friend constexpr auto operator+(Iterator it, difference_type n) noexcept -> Iterator { return it += n; }
-        [[nodiscard]] friend constexpr auto operator+(difference_type n, Iterator it) noexcept -> Iterator { return it += n; }
-        [[nodiscard]] friend constexpr auto operator-(Iterator it, difference_type n) noexcept -> Iterator { return it -= n; }
-        [[nodiscard]] friend constexpr auto operator-(Iterator const& a, Iterator const& b) noexcept -> difference_type { return a.index_ - b.index_; }
-        [[nodiscard]] friend constexpr auto operator==(Iterator const& a, Iterator const& b) noexcept -> bool { return a.index_ == b.index_; }
-        [[nodiscard]] friend constexpr auto operator<=>(Iterator const& a, Iterator const& b) noexcept { return a.index_ <=> b.index_; }
+
+        constexpr auto operator++() noexcept -> Iterator& {
+            ++index_; return *this;
+        }
+
+        constexpr auto operator++(int) noexcept -> Iterator {
+            auto tmp = *this;
+            ++index_;
+            return tmp;
+        }
+
+        constexpr auto operator--() noexcept -> Iterator& {
+            --index_;
+            return *this;
+        }
+
+        constexpr auto operator--(int) noexcept -> Iterator {
+            auto tmp = *this;
+            --index_;
+            return tmp;
+        }
+
+        constexpr auto operator+=(difference_type n) noexcept -> Iterator& {
+            index_ += n;
+            return *this;
+        }
+
+        constexpr auto operator-=(difference_type n) noexcept -> Iterator& {
+            index_ -= n;
+            return *this;
+        }
+
+        [[nodiscard]] friend constexpr auto operator+(Iterator it, difference_type n) noexcept -> Iterator {
+            return it += n;
+        }
+
+        [[nodiscard]] friend constexpr auto operator+(difference_type n, Iterator it) noexcept -> Iterator {
+            return it += n;
+        }
+
+        [[nodiscard]] friend constexpr auto operator-(Iterator it, difference_type n) noexcept -> Iterator {
+            return it -= n;
+        }
+
+        [[nodiscard]] friend constexpr auto operator-(Iterator const& a, Iterator const& b) noexcept -> difference_type {
+            return a.index_ - b.index_;
+        }
+
+        [[nodiscard]] friend constexpr auto operator==(Iterator const& a, Iterator const& b) noexcept -> bool {
+            return a.index_ == b.index_;
+        }
+
+        [[nodiscard]] friend constexpr auto operator<=>(Iterator const& a, Iterator const& b) noexcept {
+            return a.index_ <=> b.index_;
+        }
 
     private:
         std::byte const* ptr_ = nullptr;
@@ -194,12 +241,29 @@ public:
         return load(ptr_, index);
     }
 
-    [[nodiscard]] static constexpr auto size() noexcept -> size_type { return N; }
-    [[nodiscard]] static constexpr auto empty() noexcept -> bool { return N == 0; }
-    [[nodiscard]] auto front() const noexcept -> T { return load(ptr_, 0); }
-    [[nodiscard]] auto back() const noexcept -> T { return load(ptr_, N - 1); }
-    [[nodiscard]] constexpr auto begin() const noexcept -> Iterator { return Iterator{ptr_, 0}; }
-    [[nodiscard]] constexpr auto end() const noexcept -> Iterator { return Iterator{ptr_, static_cast<std::ptrdiff_t>(N)}; }
+    [[nodiscard]] static constexpr auto size() noexcept -> size_type {
+        return N;
+    }
+
+    [[nodiscard]] static constexpr auto empty() noexcept -> bool {
+        return N == 0;
+    }
+
+    [[nodiscard]] auto front() const noexcept -> T {
+        return load(ptr_, 0);
+    }
+
+    [[nodiscard]] auto back() const noexcept -> T {
+        return load(ptr_, N - 1);
+    }
+
+    [[nodiscard]] constexpr auto begin() const noexcept -> Iterator {
+        return Iterator{ptr_, 0};
+    }
+
+    [[nodiscard]] constexpr auto end() const noexcept -> Iterator {
+        return Iterator{ptr_, static_cast<std::ptrdiff_t>(N)};
+    }
 
 private:
     [[nodiscard]] static auto load(std::byte const* ptr, size_type index) noexcept -> T {
