@@ -34,7 +34,7 @@ jobs:
       matrix:
         build_type: [ 'Debug', 'Release' ]
         os: [ 'ubuntu-24.04' ]
-        compiler: [ 'gcc-14', 'clang-20' ]
+        compiler: [ 'gcc-15', 'gcc-16', 'clang-20', 'clang-21', 'clang-22' ]
 
     steps:
       - uses: actions/checkout@v4
@@ -69,29 +69,33 @@ jobs:
             COMMAND chmod +x ${cmake_dir}/cmake
           )
 
-      - name: install gcc-14
-        id: install_gcc_14
-        if: matrix.compiler == 'gcc-14'
+      - name: install gcc
+        id: install_gcc
+        if: startsWith(matrix.compiler, 'gcc-')
         shell: bash
         working-directory: ${{ env.HOME }}
         run: |
+          version="${{ matrix.compiler }}"
+          version="${version#gcc-}"
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
           sudo apt update
-          sudo apt install -y g++-14 gcc-14
-          echo "CC=gcc-14" >> $GITHUB_ENV
-          echo "CXX=g++-14" >> $GITHUB_ENV
+          sudo apt install -y "g++-${version}" "gcc-${version}"
+          echo "CC=gcc-${version}" >> $GITHUB_ENV
+          echo "CXX=g++-${version}" >> $GITHUB_ENV
 
-      - name: install clang-20
-        id: install_clang_20
-        if: matrix.compiler == 'clang-20'
+      - name: install clang
+        id: install_clang
+        if: startsWith(matrix.compiler, 'clang-')
         shell: bash
         working-directory: ${{ env.HOME }}
         run: |
+          version="${{ matrix.compiler }}"
+          version="${version#clang-}"
           curl -O -L https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 20
-          echo "CC=clang-20" >> $GITHUB_ENV
-          echo "CXX=clang++-20" >> $GITHUB_ENV
+          sudo ./llvm.sh "${version}"
+          echo "CC=clang-${version}" >> $GITHUB_ENV
+          echo "CXX=clang++-${version}" >> $GITHUB_ENV
 
       - name: configure
         shell: cmake -P {0}

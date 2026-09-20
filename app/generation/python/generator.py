@@ -1,5 +1,5 @@
 # Copyright (C) 2024 Sergey Kovalevich <inndie@gmail.com>
-# This file may be distributed under the terms of the GNU GPLv3 license
+# SPDX-License-Identifier: MIT
 
 from jinja2 import Environment, FileSystemLoader
 import math

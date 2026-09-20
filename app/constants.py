@@ -1,5 +1,5 @@
 # Copyright (C) 2026 Sergey Kovalevich <inndie@gmail.com>
-# This file may be distributed under the terms of the GNU GPLv3 license
+# SPDX-License-Identifier: MIT
 
 from typing import Any, Dict
 
@@ -36,10 +36,10 @@ PRIMITIVE_CONSTANTS: Dict[str, Any] = {
     'UINT64_MIN':   0,
     'UINT64_MAX':   18446744073709551614,
     'FLOAT_NULL':   float('nan'),
-    'FLOAT_MIN':    1.1754943508222875e-38,
+    'FLOAT_MIN':    -3.4028234663852886e+38,
     'FLOAT_MAX':    3.4028234663852886e+38,
     'DOUBLE_NULL':  float('nan'),
-    'DOUBLE_MIN':   2.2250738585072014e-308,
+    'DOUBLE_MIN':   -1.7976931348623157e+308,
     'DOUBLE_MAX':   1.7976931348623157e+308
 }
 

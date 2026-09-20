@@ -66,9 +66,20 @@ function(SbeMakeCodec TARGET)
         COMMENT "Generating schema (${PARSED_SCHEMA})"
     )
 
+    if ("${TARGET}" MATCHES "::")
+        set(targetAlias "${TARGET}")
+        string(REPLACE "::" "_" TARGET "${TARGET}")
+    else()
+        set(targetAlias "")
+    endif()
+
     add_library(${TARGET} INTERFACE EXCLUDE_FROM_ALL)
     target_compile_features(${TARGET} INTERFACE cxx_std_23)
     target_sources(${TARGET} INTERFACE ${destDir}/schema.h)
     target_include_directories(${TARGET} INTERFACE "${PARSED_OUTPUT}")
     target_precompile_headers(${TARGET} INTERFACE ${destDir}/schema.h)
+
+    if (NOT "${targetAlias}" STREQUAL "")
+        add_library(${targetAlias} ALIAS ${TARGET})
+    endif()
 endfunction()

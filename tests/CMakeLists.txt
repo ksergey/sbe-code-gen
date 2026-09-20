@@ -76,7 +76,10 @@ set_tests_properties(sbe-code-gen-python-venv-setup PROPERTIES
 
 add_test(
     NAME sbe-code-gen-python-test
-    COMMAND ${pythonEnvRoot}/bin/python -m pytest -q ${CMAKE_CURRENT_SOURCE_DIR}/test_python_codec.py
+    COMMAND ${pythonEnvRoot}/bin/python -m pytest -q
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_python_codec.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/all_types_test.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/all_types_big_endian_test.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(sbe-code-gen-python-test PROPERTIES

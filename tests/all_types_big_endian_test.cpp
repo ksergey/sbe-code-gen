@@ -35,6 +35,22 @@ TEST_CASE("all-types-big-endian: metadata") {
     REQUIRE_EQ(alltypes_be::DataOnlyMessage::sbeTemplateId(), 3);
 }
 
+TEST_CASE("all-types-big-endian: wire bytes are actually big-endian") {
+    // Round-tripping alone doesn't prove byte order: a codec that used
+    // little-endian consistently for both encode and decode would
+    // round-trip too. Read the raw wire bytes directly instead.
+    auto buffer = makeBuffer();
+
+    auto msg = alltypes_be::AllTypesMessage::wrapAndApplyHeader(buffer);
+    msg.get<"u32">().value(0x01020304u);
+
+    auto const* raw = reinterpret_cast<std::uint8_t const*>(buffer.data()) + 8 + 26;
+    REQUIRE_EQ(raw[0], 0x01);
+    REQUIRE_EQ(raw[1], 0x02);
+    REQUIRE_EQ(raw[2], 0x03);
+    REQUIRE_EQ(raw[3], 0x04);
+}
+
 TEST_CASE("all-types-big-endian: header round trip") {
     auto buffer = makeBuffer();
 
