@@ -11,9 +11,10 @@ include(CMakeParseArguments)
 # Generates an SBE message codec from an XML schema and exposes it as an
 # INTERFACE library <target> with the generated schema.h precompiled.
 #
-# The python virtualenv used to run the generator is created once per
-# top-level project (under ${PROJECT_BINARY_DIR}/venv), regardless of how
-# many times or from which subdirectory SbeMakeCodec() is called.
+# The python virtualenv used to run the generator is created once per build
+# tree (under ${PROJECT_BINARY_DIR}/venv of the project that calls
+# SbeMakeCodec() first), regardless of how many times, from which
+# subdirectory or from which project SbeMakeCodec() is called.
 function(SbeMakeCodec TARGET)
     set(options)
     set(oneValueArgs SCHEMA OUTPUT GENERATOR INCLUDE_BASE PACKAGE)
@@ -39,13 +40,14 @@ function(SbeMakeCodec TARGET)
     endif()
 
     get_filename_component(cppCodegenRoot "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
-    set(pythonEnvRoot ${PROJECT_BINARY_DIR}/venv)
-    file(REAL_PATH "${pythonEnvRoot}" pythonEnvRoot)
-    set(pythonEnvExe ${pythonEnvRoot}/bin/python)
 
-    # Setup venv once per top-level project, no matter how many times or from
-    # which subdirectory SbeMakeCodec() is called.
+    # Setup venv once per build tree, no matter how many times, from which
+    # subdirectory or from which project SbeMakeCodec() is called. The venv
+    # location is stored on the target, so later calls (possibly from another
+    # project with a different PROJECT_BINARY_DIR) use the same interpreter.
     if (NOT TARGET sbe-code-gen-venv)
+        set(pythonEnvRoot ${PROJECT_BINARY_DIR}/venv)
+        set(pythonEnvExe ${pythonEnvRoot}/bin/python)
         add_custom_command(
             OUTPUT ${pythonEnvExe} ${pythonEnvRoot}/pyvenv.cfg
             COMMAND ${Python3_EXECUTABLE} -m venv ${pythonEnvRoot}
@@ -55,7 +57,9 @@ function(SbeMakeCodec TARGET)
             COMMENT "Creating python virtualenv at ${pythonEnvRoot}"
         )
         add_custom_target(sbe-code-gen-venv DEPENDS ${pythonEnvExe} ${pythonEnvRoot}/pyvenv.cfg)
+        set_property(TARGET sbe-code-gen-venv PROPERTY SBE_CODE_GEN_PYTHON ${pythonEnvExe})
     endif()
+    get_property(pythonEnvExe TARGET sbe-code-gen-venv PROPERTY SBE_CODE_GEN_PYTHON)
 
     add_custom_command(
         OUTPUT ${destDir}/schema.h

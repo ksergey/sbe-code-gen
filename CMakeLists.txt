@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.19)
 
 project(sbe-code-gen)
 
-option(sbe_code_gen_BUILD_TESTS "Build tests (*_test.cpp files, linked against doctest)" ON)
+option(sbe_code_gen_BUILD_TESTS "Build tests (*_test.cpp files, linked against doctest)" ${PROJECT_IS_TOP_LEVEL})
 
 include(cmake/Utils.cmake)
 include(cmake/GetCPM.cmake)

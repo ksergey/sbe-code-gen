@@ -63,8 +63,7 @@ SbeCodeGenAddTestsFromSourceList(AllTypesBeSources
 # sbe-code-gen-venv target (creating the venv on demand if needed), and the
 # actual pytest run requires that fixture, so `ctest` alone - without a
 # separate manual build step - is enough to run both suites.
-set(pythonEnvRoot ${PROJECT_BINARY_DIR}/venv)
-file(REAL_PATH "${pythonEnvRoot}" pythonEnvRoot)
+get_property(pythonEnvExe TARGET sbe-code-gen-venv PROPERTY SBE_CODE_GEN_PYTHON)
 
 add_test(
     NAME sbe-code-gen-python-venv-setup
@@ -76,7 +75,7 @@ set_tests_properties(sbe-code-gen-python-venv-setup PROPERTIES
 
 add_test(
     NAME sbe-code-gen-python-test
-    COMMAND ${pythonEnvRoot}/bin/python -m pytest -q ${CMAKE_CURRENT_SOURCE_DIR}/test_python_codec.py
+    COMMAND ${pythonEnvExe} -m pytest -q ${CMAKE_CURRENT_SOURCE_DIR}/test_python_codec.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(sbe-code-gen-python-test PROPERTIES
