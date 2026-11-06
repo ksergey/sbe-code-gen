@@ -24,6 +24,7 @@ class GeneratorBase(ABC):
         ir['version'] = schema.version
         ir['byte_order'] = schema.byte_order.value
         ir['description'] = schema.description
+        ir['source_file'] = schema.source_file
         ir['header_type'] = GeneratorBase.make_encoded_type_definition(schema.header_type)
         ir['types'] = [GeneratorBase.make_encoded_type_definition(t) for t in schema.types.values()]
         ir['messages'] = [GeneratorBase.make_message_definition(m) for m in schema.messages.values()]

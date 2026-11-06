@@ -3,7 +3,7 @@ include(CMakeParseArguments)
 # SbeMakeCodec(<target>
 #     SCHEMA <path-to-schema.xml>
 #     OUTPUT <output-dir>
-#     [GENERATOR <cpp-min|cpp>]     # default: cpp-min
+#     [GENERATOR <cpp-min|cpp|cpp-split>] # default: cpp-min
 #     [INCLUDE_BASE <subdir>]       # generated headers go to OUTPUT/INCLUDE_BASE
 #     [PACKAGE <name>]              # override schema package property
 # )

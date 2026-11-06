@@ -1,0 +1,42 @@
+{% import 'generate.tmpl' as generate with context %}
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
+//
+// Types pulled in via <xi:include href="{{ fragment.source_file }}"/> live here.
+// The schema header (schema.h) re-imports them into its own namespace via
+// using-declarations, so the generated API is unchanged compared to the
+// single-file layout.
+
+#pragma once
+
+#include "common.h"
+
+namespace {{ fragment.namespace }} {
+
+// support types referenced unqualified by the generated code below
+using common::CtStr;
+using common::TypeList;
+using common::MP_size_t;
+using common::MP_size;
+using common::MP_at;
+using common::MP_find;
+using common::MP_MatchRefName;
+using common::loadUnaligned;
+using common::storeUnaligned;
+using common::EndianValueRef;
+using common::EndianSpan;
+
+{% for encoded_type in fragment.types %}
+    {% if encoded_type.token == 'enum' %}
+
+{{ generate.decl_enum(encoded_type) }}
+    {% elif encoded_type.token == 'set' %}
+
+{{ generate.decl_set(encoded_type) }}
+    {% elif encoded_type.token == 'composite' %}
+
+{{ generate.decl_composite(encoded_type) }}
+    {% endif %}
+{% endfor %}
+
+} // namespace {{ fragment.namespace }}

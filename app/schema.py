@@ -42,6 +42,9 @@ class Type:
     const_value: Optional[str] = field(default=None)
     character_encoding: Optional[str] = field(default=None)
     inplace: bool = field(default=False)
+    ''' basename of the file this type was defined in (via provenance
+        tracking of <xi:include>) '''
+    source_file: str = field(default_factory=str)
 
     def encoded_length(self) -> int:
         if self.presence == Presence.CONSTANT:
@@ -59,6 +62,9 @@ class Composite:
     deprecated: Optional[int] = field(default=None)
     contained_types: Dict[str, Union[Type, Composite, Enum, Set, Ref]] = field(default_factory=dict)
     inplace: bool = field(default=False)
+    ''' basename of the file this composite was defined in (via provenance
+        tracking of <xi:include>) '''
+    source_file: str = field(default_factory=str)
 
     def encoded_length(self) -> int:
         length = 0
@@ -121,6 +127,9 @@ class Enum:
     null_value: Optional[str] = field(default=None)
     valid_value_by_name: Dict[str, ValidValue] = field(default_factory=dict)
     inplace: bool = field(default=False)
+    ''' basename of the file this enum was defined in (via provenance
+        tracking of <xi:include>) '''
+    source_file: str = field(default_factory=str)
 
     def encoded_length(self) -> int:
         return self.encoding_type.size
@@ -144,6 +153,9 @@ class Set:
     offset: Optional[int] = field(default=None)
     choice_by_name: Dict[str, Choice] = field(default_factory=dict)
     inplace: bool = field(default=False)
+    ''' basename of the file this set was defined in (via provenance
+        tracking of <xi:include>) '''
+    source_file: str = field(default_factory=str)
 
     def encoded_length(self) -> int:
         return self.encoding_type.size
@@ -178,6 +190,8 @@ class Message:
     since_version: int = field(default=0)
     deprecated: Optional[int] = field(default=None)
     fields: Dict[str, EncodedType] = field(default_factory=dict)
+    ''' basename of the schema file this message was defined in '''
+    source_file: str = field(default_factory=str)
 
 @dataclass(frozen=True)
 class Field:
@@ -229,5 +243,8 @@ class Schema:
     header_type: Composite = field(default_factory=Composite)
     types: Dict[str, EncodedType] = field(default_factory=dict)
     messages: Dict[str, Message] = field(default_factory=dict)
+    ''' basename of the schema file itself (via provenance tracking of
+        <xi:include>) '''
+    source_file: str = field(default_factory=str)
 
 EncodedType = Union[Type, Composite, Enum, Set]

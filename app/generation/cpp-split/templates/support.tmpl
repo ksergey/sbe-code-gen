@@ -1,0 +1,33 @@
+{% import 'generate.tmpl' as generate with context %}
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
+//
+// Support types shared by every generated document (schema.h and all
+// fragment headers). They live in the "common" namespace; generated code
+// references them via using-declarations.
+
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cassert>
+#include <cmath>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <iterator>
+#include <limits>
+#include <span>
+#include <stdexcept>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <vector>
+
+namespace common {
+
+{{ generate.decl_support_types() }}
+
+} // namespace common

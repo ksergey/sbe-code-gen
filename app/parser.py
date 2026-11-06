@@ -62,7 +62,8 @@ class Parser:
             description=attr(self.root, 'description', None),
             header_type=self.get_header(),
             types=self.get_types(),
-            messages=self.get_messages()
+            messages=self.get_messages(),
+            source_file=self.root.attrib.get(SOURCE_FILE_ATTR, '')
         )
 
     def get_types(self) -> Dict[str, EncodedType]:
@@ -167,7 +168,8 @@ class Parser:
             value_ref=value_ref,
             const_value=const_value,
             character_encoding=character_encoding,
-            inplace=inplace
+            inplace=inplace,
+            source_file=node.attrib.get(SOURCE_FILE_ATTR, '')
         )
 
     def parse_composite_from_node(self, node: ET.Element, offset: Optional[int] = None, inplace: bool = False) -> Composite:
@@ -205,7 +207,8 @@ class Parser:
             since_version=attr(node, 'sinceVersion', 0, cast=int),
             deprecated=attr(node, 'deprecated', None, cast=int),
             contained_types=contained_types,
-            inplace=inplace
+            inplace=inplace,
+            source_file=node.attrib.get(SOURCE_FILE_ATTR, '')
         )
 
     def parse_valid_value_from_node(self, node: ET.Element) -> ValidValue:
@@ -238,7 +241,8 @@ class Parser:
             offset=attr(node, 'offset', offset, cast=int),
             null_value=attr(node, 'nullValue', None),
             valid_value_by_name=valid_value_by_name,
-            inplace=inplace
+            inplace=inplace,
+            source_file=node.attrib.get(SOURCE_FILE_ATTR, '')
         )
 
     def parse_choice_from_node(self, node: ET.Element) -> Choice:
@@ -269,7 +273,8 @@ class Parser:
             deprecated=attr(node, 'deprecated', None, cast=int),
             offset=attr(node, 'offset', offset, cast=int),
             choice_by_name=choice_by_name,
-            inplace=inplace
+            inplace=inplace,
+            source_file=node.attrib.get(SOURCE_FILE_ATTR, '')
         )
 
     def parse_ref_from_node(self, node: ET.Element, offset: Optional[int] = None) -> Ref:
@@ -328,7 +333,8 @@ class Parser:
             semantic_type=attr(node, 'semanticType', None),
             since_version=attr(node, 'sinceVersion', 0, cast=int),
             deprecated=attr(node, 'deprecated', None, cast=int),
-            fields=field_by_name
+            fields=field_by_name,
+            source_file=node.attrib.get(SOURCE_FILE_ATTR, '')
         )
 
     def parse_field_from_node(self, node: ET.Element, offset: int) -> Field:

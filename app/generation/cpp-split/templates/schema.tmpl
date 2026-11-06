@@ -1,0 +1,83 @@
+{% import 'generate.tmpl' as generate with context %}
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
+//
+// Schema-defined types (and messages) live here. Types pulled in via
+// <xi:include> live in separate fragment headers; they are re-imported below
+// via using-declarations so the API matches the single-file layout.
+
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cassert>
+#include <cmath>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <iterator>
+#include <limits>
+#include <span>
+#include <stdexcept>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <vector>
+
+#include "common.h"
+{% for fragment in fragments %}
+#include "{{ fragment.stem }}.h"
+{% endfor %}
+
+namespace {{ generate.namespace }} {
+
+{% for message in schema.messages %}
+class {{ message.name | fmt_class_message }};
+{% endfor %}
+
+// support types referenced unqualified by the generated code below
+using common::CtStr;
+using common::TypeList;
+using common::MP_size_t;
+using common::MP_size;
+using common::MP_at;
+using common::MP_find;
+using common::MP_MatchRefName;
+using common::loadUnaligned;
+using common::storeUnaligned;
+using common::EndianValueRef;
+using common::EndianSpan;
+
+// types pulled in from included files
+{% for fragment in fragments %}
+{% for encoded_type in fragment.types %}
+using {{ fragment.namespace }}::{{ encoded_type.name | fmt_class_type }};
+{% endfor %}
+{% endfor %}
+
+// schema messages list
+using Messages = TypeList<
+{% for message in schema.messages %}
+    {{ message.name | fmt_class_message }}{% if not loop.last %},{% endif +%}
+{% endfor %}
+>;
+{% for encoded_type in schema_types %}
+    {% if encoded_type.token == 'enum' %}
+
+{{ generate.decl_enum(encoded_type) }}
+    {% elif encoded_type.token == 'set' %}
+
+{{ generate.decl_set(encoded_type) }}
+    {% elif encoded_type.token == 'composite' %}
+
+{{ generate.decl_composite(encoded_type) }}
+    {% endif %}
+{% endfor %}
+{% for message in schema.messages %}
+
+{{ generate.decl_message(message) }}
+{% endfor %}
+
+} // namespace {{ generate.namespace }}

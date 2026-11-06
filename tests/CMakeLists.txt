@@ -18,6 +18,23 @@ SbeMakeCodec(all_types_be
     GENERATOR cpp-min
 )
 
+# The same schemas/tests against the cpp-split generator: the generated API
+# is identical, only the file layout differs (common.h + per-include-file
+# fragment headers). Since all_types_1_0.xml has no <xi:include>, only the
+# schema/common split itself is exercised here; provenance handling of
+# included types is covered by hand-built schemas (see README).
+SbeMakeCodec(all_types_split
+    SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/../resources/all_types_1_0.xml
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/all_types_split
+    GENERATOR cpp-split
+)
+
+SbeMakeCodec(all_types_be_split
+    SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/../resources/all_types_big_endian_1_0.xml
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/all_types_be_split
+    GENERATOR cpp-split
+)
+
 # Split sources per codec: every generated schema.h lives in the same-named
 # include dir, so each test target may only link the codec it actually uses.
 set(SpotSources)
@@ -49,6 +66,20 @@ SbeCodeGenAddTestsFromSourceList(AllTypesBeSources
     PREFIX sbe-code-gen
     COMPILE_OPTIONS -Wall -Wextra -g
     LIBS doctest::doctest_with_main all_types_be
+)
+
+# Split-generator variants of the same tests; PREFIX differs, so ctest names
+# stay unique (sbe-code-gen-split-all_types-test etc.).
+SbeCodeGenAddTestsFromSourceList(AllTypesSources
+    PREFIX sbe-code-gen-split
+    COMPILE_OPTIONS -Wall -Wextra -g
+    LIBS doctest::doctest_with_main all_types_split
+)
+
+SbeCodeGenAddTestsFromSourceList(AllTypesBeSources
+    PREFIX sbe-code-gen-split
+    COMPILE_OPTIONS -Wall -Wextra -g
+    LIBS doctest::doctest_with_main all_types_be_split
 )
 
 # Python codec tests (test_python_codec.py) are self-contained: at test time

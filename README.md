@@ -17,12 +17,13 @@ Given a schema, the generator emits codecs that encode and decode binary message
 | Generator | Output | Target |
 |-----------|--------|--------|
 | `cpp-min` | `schema.h` | Single-header C++23 codec |
+| `cpp-split` | `common.h`, `<stem>.h` (one per xi:include'd file), `schema.h` | C++23 codec with shared types emitted into separate fragment headers |
 | `python`  | `schema.py` | Python codec with zero runtime dependencies (uses only the standard library) |
 
 ## Requirements
 
 * Python 3.10+ and `pip install -r requirements.txt` (Jinja2, pytest).
-* For the `cpp-min` codec: a C++23 compiler and CMake 3.19+.
+* For the C++ codecs (`cpp-min`, `cpp-split`): a C++23 compiler and CMake 3.19+.
 
 ## Code generation (CLI)
 
@@ -43,7 +44,7 @@ include(cmake/SbeMakeCodec.cmake)
 SbeMakeCodec(spot_codec
     SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/resources/spot_3_1.xml
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/sbe
-    GENERATOR cpp-min       # cpp-min | python
+    GENERATOR cpp-min       # cpp-min | cpp-split | python
     # INCLUDE_BASE spot_sbe # header is placed at OUTPUT/INCLUDE_BASE/schema.h
     # PACKAGE spot_sbe      # override the schema package attribute
 )
@@ -52,6 +53,24 @@ target_link_libraries(my_app PRIVATE spot_codec)
 ```
 
 Without `INCLUDE_BASE`, the generated `schema.h` is written to `OUTPUT/schema.h` and included as `"schema.h"`; with `INCLUDE_BASE`, it is included as `<spot_sbe/schema.h>`. The python virtualenv used by the generator is created once per top-level project (under `${PROJECT_BINARY_DIR}/venv`).
+
+### The `cpp-split` generator
+
+`cpp-split` is identical to `cpp-min` for the generated C++ API, but it tracks provenance of
+`<xi:include>`d files and splits the output: shared types (e.g. `messageHeader`) emitted once per
+included file are usable by several schemas generated into the same destination, giving the
+`TypeList<...>`-demuxing across schemas a single, type-identical `MessageHeader` (and other shared
+types). Per schema the generator writes:
+
+* `common.h` — support types (CtStr, TypeList, MP_at/MP_find, EndianValueRef, EndianSpan, ...)
+  in `namespace common`,
+* `<stem>.h` — one header per unique included file (e.g. `common_types.xml` → `common_types.h`),
+  all its types in `namespace <stem>`,
+* `schema.h` — schema-defined types and messages; the support types and fragment types are
+  re-imported with using-declarations, so unqualified usage is exactly like with `cpp-min`.
+
+Limitation: an included file is expected to be self-contained — its types may only reference
+support types and types from the same included file.
 
 ## C++ codec usage
 
