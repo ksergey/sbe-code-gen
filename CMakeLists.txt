@@ -10,6 +10,6 @@ include(cmake/SbeMakeCodec.cmake)
 
 if (sbe_code_gen_BUILD_TESTS)
     enable_testing()
-    CPMAddPackage("gh:doctest/doctest@2.5.2")
+    CPMAddPackage("gh:doctest/doctest@2.5.3")
     add_subdirectory(tests)
 endif()
