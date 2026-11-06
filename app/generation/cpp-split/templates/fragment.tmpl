@@ -9,22 +9,22 @@
 
 #pragma once
 
-#include "common.h"
+#include "support.h"
 
 namespace {{ fragment.namespace }} {
 
 // support types referenced unqualified by the generated code below
-using common::CtStr;
-using common::TypeList;
-using common::MP_size_t;
-using common::MP_size;
-using common::MP_at;
-using common::MP_find;
-using common::MP_MatchRefName;
-using common::loadUnaligned;
-using common::storeUnaligned;
-using common::EndianValueRef;
-using common::EndianSpan;
+using sbe_code_gen::CtStr;
+using sbe_code_gen::TypeList;
+using sbe_code_gen::MP_size_t;
+using sbe_code_gen::MP_size;
+using sbe_code_gen::MP_at;
+using sbe_code_gen::MP_find;
+using sbe_code_gen::MP_MatchRefName;
+using sbe_code_gen::loadUnaligned;
+using sbe_code_gen::storeUnaligned;
+using sbe_code_gen::EndianValueRef;
+using sbe_code_gen::EndianSpan;
 
 {% for encoded_type in fragment.types %}
     {% if encoded_type.token == 'enum' %}

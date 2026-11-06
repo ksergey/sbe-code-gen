@@ -19,7 +19,7 @@ SbeMakeCodec(all_types_be
 )
 
 # The same schemas/tests against the cpp-split generator: the generated API
-# is identical, only the file layout differs (common.h + per-include-file
+# is identical, only the file layout differs (support.h + per-include-file
 # fragment headers). Since all_types_1_0.xml has no <xi:include>, only the
 # schema/common split itself is exercised here; provenance handling of
 # included types is covered by hand-built schemas (see README).

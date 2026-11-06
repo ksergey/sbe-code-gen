@@ -22,7 +22,7 @@ class Generator(GeneratorBase):
 
     def _generate_impl(self, schema: dict) -> None:
         fragments = self.make_fragments(schema)
-        self.generate_document('common.h', 'support.tmpl', schema=schema)
+        self.generate_document('support.h', 'support.tmpl', schema=schema)
         for fragment in fragments:
             self.generate_document(f'{fragment["stem"]}.h', 'fragment.tmpl', schema=schema, fragment=fragment)
         self.generate_document('schema.h', 'schema.tmpl', schema=schema, schema_types=self.own_types(schema, fragments), fragments=fragments)

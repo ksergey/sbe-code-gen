@@ -1,10 +1,9 @@
-{% import 'generate.tmpl' as generate with context %}
 // Generated simple binary encoding message codec
 // Message codec generator: https://github.com/ksergey/sbe-code-gen
 //
 // Support types shared by every generated document (schema.h and all
-// fragment headers). They live in the "common" namespace; generated code
-// references them via using-declarations.
+// fragment headers). They live in the "sbe_code_gen" namespace; generated
+// code references them via using-declarations.
 
 #pragma once
 
@@ -26,8 +25,276 @@
 #include <type_traits>
 #include <vector>
 
-namespace common {
+namespace sbe_code_gen {
 
-{{ generate.decl_support_types() }}
+// compile time string
+template <std::size_t N>
+struct CtStr {
+    char data[N];
 
-} // namespace common
+    consteval CtStr(char const* str) noexcept {
+        std::copy_n(str, N, data);
+    }
+
+    [[nodiscard]] constexpr operator std::string_view() const noexcept {
+        return std::string_view{data, N - 1};
+    }
+};
+template <std::size_t N>
+CtStr(char const (&)[N]) -> CtStr<N>;
+
+// type list
+template <typename...>
+struct TypeList {};
+
+template <std::size_t N>
+using MP_size_t = std::integral_constant<std::size_t, N>;
+
+template <typename L>
+struct MP_sizeImpl;
+template <template <typename...> typename L, typename... Ts>
+struct MP_sizeImpl<L<Ts...>> {
+    using type = MP_size_t<sizeof...(Ts)>;
+};
+template <typename L>
+using MP_size = typename MP_sizeImpl<L>::type;
+
+template <typename L, typename I>
+struct MP_atImpl;
+template <template <typename...> typename L, typename... Ts, typename I>
+struct MP_atImpl<L<Ts...>, I> : std::tuple_element<I::value, std::tuple<Ts...>> {};
+template <typename L, typename I>
+using MP_at = typename MP_atImpl<L, I>::type;
+
+template <typename L, typename M>
+struct MP_findImpl;
+template <template <typename...> typename L, typename... T, typename M>
+struct MP_findImpl<L<T...>, M> {
+    using type = MP_size_t<[]() -> std::size_t {
+        constexpr auto match = std::array{M::template fn<T>::value...};
+        std::size_t index = 0;
+        for (; index < sizeof...(T); ++index) {
+            if (match[index]) {
+                break;
+            }
+        }
+        return index;
+    }()>;
+};
+template <typename L, typename M>
+using MP_find = typename MP_findImpl<L, M>::type;
+
+template <CtStr Name>
+struct MP_MatchRefName {
+    template <typename T>
+    struct fn {
+        static constexpr auto value = static_cast<std::string_view>(Name) == T::sbeRefName();
+    };
+};
+
+// Reads/writes a trivially-copyable scalar at `ptr`, which may not satisfy alignof(T)
+// (SBE field offsets are packed and are not guaranteed to be aligned). A direct
+// `*std::bit_cast<T*>(ptr)` dereference of an unaligned pointer is undefined behaviour;
+// memcpy is the standard-sanctioned way to do this regardless of alignment, and compilers
+// turn it back into a plain unaligned load/store when they can.
+template <typename T>
+[[nodiscard]] inline auto loadUnaligned(std::byte const* ptr) noexcept -> T {
+    T value;
+    std::memcpy(&value, ptr, sizeof(T));
+    return value;
+}
+
+template <typename T>
+inline auto storeUnaligned(std::byte* ptr, T const& value) noexcept -> void {
+    std::memcpy(ptr, &value, sizeof(T));
+}
+
+// A view over a single scalar at a possibly-unaligned address that transparently converts
+// between the schema's declared byte order and native byte order on every read/write -
+// like a single-element std::span, but byte-order-aware. Reads/writes go through
+// loadUnaligned/storeUnaligned, so this is also safe regardless of alignment.
+template <typename T>
+class EndianValueRef {
+public:
+    constexpr explicit EndianValueRef(std::byte* ptr) noexcept : ptr_{ptr} {}
+
+    [[nodiscard]] operator T() const noexcept {
+        return swap(loadUnaligned<T>(ptr_));
+    }
+
+    auto operator=(T value) const noexcept -> EndianValueRef const& {
+        storeUnaligned(ptr_, swap(value));
+        return *this;
+    }
+
+private:
+    [[nodiscard]] static auto swap([[maybe_unused]] T value) noexcept -> T {
+{% if schema.byte_order == 'littleEndian' %}
+        if constexpr (std::endian::native == std::endian::big) {
+{% elif schema.byte_order == 'bigEndian' %}
+        if constexpr (std::endian::native == std::endian::little) {
+{% endif %}
+            if constexpr (std::is_same_v<T, float>) {
+                return std::bit_cast<float>(std::byteswap(std::bit_cast<std::uint32_t>(value)));
+            } else if constexpr (std::is_same_v<T, double>) {
+                return std::bit_cast<double>(std::byteswap(std::bit_cast<std::uint64_t>(value)));
+            } else {
+                return std::byteswap(value);
+            }
+        }
+        return value;
+    }
+
+    std::byte* ptr_;
+};
+
+// A read-only, span-like view over a fixed-length array of scalars stored in the schema's
+// byte order at a possibly-unaligned address. Nothing is converted up front: each element
+// is loaded and byte-swapped only when it is actually accessed, so iterating a subset of a
+// large array costs only what is read. Elements are returned by value (not by reference),
+// since the stored representation may differ from the native one.
+template <typename T, std::size_t N>
+class EndianSpan {
+public:
+    using value_type = T;
+    using size_type = std::size_t;
+
+    class Iterator {
+    public:
+        using iterator_category = std::random_access_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+
+        constexpr Iterator() noexcept = default;
+
+        constexpr Iterator(std::byte const* ptr, difference_type index) noexcept : ptr_{ptr}, index_{index} {}
+
+        [[nodiscard]] auto operator*() const noexcept -> T {
+            return EndianSpan::load(ptr_, static_cast<size_type>(index_));
+        }
+
+        [[nodiscard]] auto operator[](difference_type n) const noexcept -> T {
+            return EndianSpan::load(ptr_, static_cast<size_type>(index_ + n));
+        }
+
+        constexpr auto operator++() noexcept -> Iterator& {
+            ++index_; return *this;
+        }
+
+        constexpr auto operator++(int) noexcept -> Iterator {
+            auto tmp = *this;
+            ++index_;
+            return tmp;
+        }
+
+        constexpr auto operator--() noexcept -> Iterator& {
+            --index_;
+            return *this;
+        }
+
+        constexpr auto operator--(int) noexcept -> Iterator {
+            auto tmp = *this;
+            --index_;
+            return tmp;
+        }
+
+        constexpr auto operator+=(difference_type n) noexcept -> Iterator& {
+            index_ += n;
+            return *this;
+        }
+
+        constexpr auto operator-=(difference_type n) noexcept -> Iterator& {
+            index_ -= n;
+            return *this;
+        }
+
+        [[nodiscard]] friend constexpr auto operator+(Iterator it, difference_type n) noexcept -> Iterator {
+            return it += n;
+        }
+
+        [[nodiscard]] friend constexpr auto operator+(difference_type n, Iterator it) noexcept -> Iterator {
+            return it += n;
+        }
+
+        [[nodiscard]] friend constexpr auto operator-(Iterator it, difference_type n) noexcept -> Iterator {
+            return it -= n;
+        }
+
+        [[nodiscard]] friend constexpr auto operator-(Iterator const& a, Iterator const& b) noexcept -> difference_type {
+            return a.index_ - b.index_;
+        }
+
+        [[nodiscard]] friend constexpr auto operator==(Iterator const& a, Iterator const& b) noexcept -> bool {
+            return a.index_ == b.index_;
+        }
+
+        [[nodiscard]] friend constexpr auto operator<=>(Iterator const& a, Iterator const& b) noexcept {
+            return a.index_ <=> b.index_;
+        }
+
+    private:
+        std::byte const* ptr_ = nullptr;
+        difference_type index_ = 0;
+    };
+
+    constexpr explicit EndianSpan(std::byte const* ptr) noexcept : ptr_{ptr} {}
+
+    [[nodiscard]] auto operator[](size_type index) const noexcept -> T {
+        return load(ptr_, index);
+    }
+
+    [[nodiscard]] auto at(size_type index) const -> T {
+        if (index >= N) [[unlikely]] {
+            throw std::out_of_range{"EndianSpan index out of range"};
+        }
+        return load(ptr_, index);
+    }
+
+    [[nodiscard]] static constexpr auto size() noexcept -> size_type {
+        return N;
+    }
+
+    [[nodiscard]] static constexpr auto empty() noexcept -> bool {
+        return N == 0;
+    }
+
+    [[nodiscard]] auto front() const noexcept -> T {
+        return load(ptr_, 0);
+    }
+
+    [[nodiscard]] auto back() const noexcept -> T {
+        return load(ptr_, N - 1);
+    }
+
+    [[nodiscard]] constexpr auto begin() const noexcept -> Iterator {
+        return Iterator{ptr_, 0};
+    }
+
+    [[nodiscard]] constexpr auto end() const noexcept -> Iterator {
+        return Iterator{ptr_, static_cast<std::ptrdiff_t>(N)};
+    }
+
+private:
+    [[nodiscard]] static auto load(std::byte const* ptr, size_type index) noexcept -> T {
+        T value;
+        std::memcpy(&value, ptr + index * sizeof(T), sizeof(T));
+{% if schema.byte_order == 'littleEndian' %}
+        if constexpr (std::endian::native == std::endian::big) {
+{% elif schema.byte_order == 'bigEndian' %}
+        if constexpr (std::endian::native == std::endian::little) {
+{% endif %}
+            if constexpr (std::is_same_v<T, float>) {
+                return std::bit_cast<float>(std::byteswap(std::bit_cast<std::uint32_t>(value)));
+            } else if constexpr (std::is_same_v<T, double>) {
+                return std::bit_cast<double>(std::byteswap(std::bit_cast<std::uint64_t>(value)));
+            } else {
+                return std::byteswap(value);
+            }
+        }
+        return value;
+    }
+
+    std::byte const* ptr_;
+};
+
+} // namespace sbe_code_gen

@@ -17,7 +17,7 @@ Given a schema, the generator emits codecs that encode and decode binary message
 | Generator | Output | Target |
 |-----------|--------|--------|
 | `cpp-min` | `schema.h` | Single-header C++23 codec |
-| `cpp-split` | `common.h`, `<stem>.h` (one per xi:include'd file), `schema.h` | C++23 codec with shared types emitted into separate fragment headers |
+| `cpp-split` | `support.h`, `<stem>.h` (one per xi:include'd file), `schema.h` | C++23 codec with shared types emitted into separate fragment headers |
 | `python`  | `schema.py` | Python codec with zero runtime dependencies (uses only the standard library) |
 
 ## Requirements
@@ -62,8 +62,8 @@ included file are usable by several schemas generated into the same destination,
 `TypeList<...>`-demuxing across schemas a single, type-identical `MessageHeader` (and other shared
 types). Per schema the generator writes:
 
-* `common.h` — support types (CtStr, TypeList, MP_at/MP_find, EndianValueRef, EndianSpan, ...)
-  in `namespace common`,
+` support types: refactor the line by hand (CtStr, TypeList, MP_at/MP_find, EndianValueRef, EndianSpan, ...)
+  in `namespace sbe_code_gen`,
 * `<stem>.h` — one header per unique included file (e.g. `common_types.xml` → `common_types.h`),
   all its types in `namespace <stem>`,
 * `schema.h` — schema-defined types and messages; the support types and fragment types are
