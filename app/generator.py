@@ -15,6 +15,10 @@ class GeneratorBase(ABC):
         pass
 
     def generate(self, schema: Schema, package: Optional[str] = None) -> None:
+        self._generate_impl(GeneratorBase.make_ir(schema, package))
+
+    @staticmethod
+    def make_ir(schema: Schema, package: Optional[str] = None) -> dict:
         ir = {}
         if not package:
             ir['package'] = schema.package.split('.') if schema.package else None
@@ -28,14 +32,15 @@ class GeneratorBase(ABC):
         ir['header_type'] = GeneratorBase.make_encoded_type_definition(schema.header_type)
         ir['types'] = [GeneratorBase.make_encoded_type_definition(t) for t in schema.types.values()]
         ir['messages'] = [GeneratorBase.make_message_definition(m) for m in schema.messages.values()]
-        self._generate_impl(ir)
+        return ir
 
     def generate_document(self, document_name: str, template_name: str, **kwargs) -> None:
         template = self.env.get_template(template_name)
         document_path = f'{self.path}/{document_name}'
         document_content = template.render(**kwargs)
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
+        document_dir = os.path.dirname(document_path)
+        if document_dir:
+            os.makedirs(document_dir, exist_ok=True)
         with open(document_path, mode='w', encoding='utf8') as document:
             document.write(document_content)
 

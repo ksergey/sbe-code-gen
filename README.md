@@ -34,6 +34,22 @@ $ python -m app --schema=resources/spot_3_1.xml --destination=out/py  --generato
 
 `--package=<name>` overrides the `package` attribute of the schema (it defines the C++ namespace / Python module structure).
 
+### Bundle generation
+
+`--bundle` generates several schemas into one destination (only `cpp-split` supports it):
+
+```console
+$ python -m app --schema=md.xml --schema=svc.xml --bundle --generator=cpp-split --destination=out/bundle
+```
+
+The output holds one `support.h`, one fragment header per unique `xi:include`d file and one
+`<package>/schema.h` per schema (where `<package>` is the schema's package path joined by `_`).
+Types shared through `xi:include` are emitted once, so a translation unit that includes two
+schemas of the bundle sees a single set of shared types (one `MessageHeader`, one `Price9`, ...).
+Constraints: every schema must have a `package` attribute, and all schemas of a bundle must
+share the same byte order, same `version` and same message header type; type names across
+fragment headers must be unique.
+
 ## CMake integration
 
 `SbeMakeCodec()` generates a codec from an XML schema and exposes it as an `INTERFACE` library:
@@ -52,17 +68,31 @@ SbeMakeCodec(spot_codec
 target_link_libraries(my_app PRIVATE spot_codec)
 ```
 
+Several schemas generated together into one destination use `SbeMakeCodecBundle()`: shared `xi:include`d types then exist once per build (one `MessageHeader`, one `Price9`, ... in one shared header), so a translation unit that uses two schemas of the bundle never ends up with duplicate definitions. It creates one `INTERFACE` library per schema (`<target>-<package>-sbe`, alias `<target>::<package>-sbe`) from a single generation run:
+
+```cmake
+SbeMakeCodecBundle(prots
+    PACKAGES md;svc
+    SCHEMAS  ${CMAKE_CURRENT_SOURCE_DIR}/resources/md.xml;${CMAKE_CURRENT_SOURCE_DIR}/resources/svc.xml
+    OUTPUT   ${CMAKE_CURRENT_BINARY_DIR}/sbe
+    INCLUDE_BASE turbofw           # schemas end up under OUTPUT/turbofw/<package>/schema.h
+    GENERATOR cpp-split
+    # SCHEMA_DEPS ${CMAKE_CURRENT_SOURCE_DIR}/resources/common_types.xml  # regeneration trigger for includes
+)
+
+target_link_libraries(my_app PRIVATE prots::md-sbe prots::svc-sbe)
+```
+
 Without `INCLUDE_BASE`, the generated `schema.h` is written to `OUTPUT/schema.h` and included as `"schema.h"`; with `INCLUDE_BASE`, it is included as `<spot_sbe/schema.h>`. The python virtualenv used by the generator is created once per top-level project (under `${PROJECT_BINARY_DIR}/venv`).
 
 ### The `cpp-split` generator
 
 `cpp-split` is identical to `cpp-min` for the generated C++ API, but it tracks provenance of
-`<xi:include>`d files and splits the output: shared types (e.g. `messageHeader`) emitted once per
-included file are usable by several schemas generated into the same destination, giving the
-`TypeList<...>`-demuxing across schemas a single, type-identical `MessageHeader` (and other shared
-types). Per schema the generator writes:
+`<xi:include>`d files and splits the output: types from each included file are emitted into their
+own fragment header (shared once per destination, see the bundle section above). Per schema the
+generator writes:
 
-` support types: refactor the line by hand (CtStr, TypeList, MP_at/MP_find, EndianValueRef, EndianSpan, ...)
+* `support.h` — support types (CtStr, TypeList, MP_at/MP_find, EndianValueRef, EndianSpan, ...)
   in `namespace sbe_code_gen`,
 * `<stem>.h` — one header per unique included file (e.g. `common_types.xml` → `common_types.h`),
   all its types in `namespace <stem>`,
