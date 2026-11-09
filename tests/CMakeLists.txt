@@ -131,3 +131,12 @@ add_test(
 set_tests_properties(sbe-code-gen-bundle-layout-test PROPERTIES
     FIXTURES_REQUIRED sbe_code_gen_python_venv
 )
+
+add_test(
+    NAME sbe-code-gen-field-value-type-test
+    COMMAND ${pythonEnvExe} -m pytest -q ${CMAKE_CURRENT_SOURCE_DIR}/test_field_value_type.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(sbe-code-gen-field-value-type-test PROPERTIES
+    FIXTURES_REQUIRED sbe_code_gen_python_venv
+)

@@ -741,6 +741,7 @@ public:
 {% set is_required = entry.presence == 'required' %}
 {% set is_constant = entry.presence == 'constant' %}
 struct {{ class_cpp_t }} {
+    using ValueType = {{ value_cpp_t }};
 {% if is_required or is_optional %}
     std::byte* bufferPtr = nullptr;
 
@@ -898,6 +899,7 @@ struct {{ class_cpp_t }} {
 {% set is_required = entry.presence == 'required' %}
 {% set is_constant = entry.presence == 'constant' %}
 struct {{ class_cpp_t }} {
+    using ValueType = {{ value_cpp_t }};
 {% if is_required or is_optional %}
     std::byte* bufferPtr = nullptr;
 
@@ -977,6 +979,7 @@ struct {{ class_cpp_t }} {
 {% set enc_cpp_t = type.encoding_type | to_cpp_type %}
 {% set value_cpp_t = type.name | fmt_class_type %}
 struct {{ class_cpp_t }} {
+    using ValueType = {{ value_cpp_t }};
     std::byte* bufferPtr = nullptr;
 
     {# constructor #}
@@ -1030,6 +1033,7 @@ struct {{ class_cpp_t }} {
 {% set mantissa = (type.contained_types | selectattr('name', 'equalto', 'mantissa') | first ) %}
 {% set exponent = (type.contained_types | selectattr('name', 'equalto', 'exponent') | first ) %}
 struct {{ class_cpp_t }} : public {{ value_cpp_t }} {
+    using ValueType = {{ value_cpp_t }};
     std::byte* bufferPtr = nullptr;
 
     {# constructor (required, optional) #}
