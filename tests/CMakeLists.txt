@@ -113,3 +113,21 @@ set_tests_properties(sbe-code-gen-python-test PROPERTIES
     FIXTURES_REQUIRED sbe_code_gen_python_venv
     ENVIRONMENT "SBE_CODE_GEN_PYTHON_CODEC_DIR=${CMAKE_CURRENT_BINARY_DIR}/python-codec-test"
 )
+
+add_test(
+    NAME sbe-code-gen-write-if-different-test
+    COMMAND ${pythonEnvExe} -m pytest -q ${CMAKE_CURRENT_SOURCE_DIR}/test_write_if_different.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(sbe-code-gen-write-if-different-test PROPERTIES
+    FIXTURES_REQUIRED sbe_code_gen_python_venv
+)
+
+add_test(
+    NAME sbe-code-gen-bundle-layout-test
+    COMMAND ${pythonEnvExe} -m pytest -q ${CMAKE_CURRENT_SOURCE_DIR}/test_bundle_layout.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(sbe-code-gen-bundle-layout-test PROPERTIES
+    FIXTURES_REQUIRED sbe_code_gen_python_venv
+)

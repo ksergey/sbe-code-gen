@@ -172,16 +172,32 @@ class Generator(GeneratorBase):
                                       namespace "sbe_code_gen"
       <destination>/<stem>.h          fragment header per unique xi:include'd
                                       file, namespace <stem>
+      <destination>/<package>/types.h
+                                      enum/set/composite types defined in the
+                                      schema file itself, plus the re-imports
+                                      of support and fragment types
+      <destination>/<package>/<Message>.h
+                                      one header per message (C++ class name,
+                                      includes types.h)
       <destination>/<package>/schema.h
-                                      one schema header per schema; <package>
-                                      is the schema's package attribute with
-                                      path components joined by '_' (a schema
+                                      umbrella per schema: includes types.h and
+                                      every message header, defines the
+                                      Messages TypeList; <package> is the
+                                      schema's package attribute with path
+                                      components joined by '_' (a schema
                                       without a package is an error)
 
     Shared fragment headers are emitted once and included by every schema
     header, so types XIncluded by several schemas are the very same C++ types
     everywhere; a translation unit that uses two schemas of the bundle gets
     one shared copy of them.
+
+    Every file is written with write-if-different semantics: a byte-identical
+    file keeps its mtime, so timestamp-based builders skip it. Files left
+    over from a previous generation that the current schemas no longer
+    produce (a removed message, a renamed fragment) are pruned before
+    writing: only files carrying the generator provenance banner are ever
+    deleted, foreign files keep safe.
 
     Constraints (checked, error out otherwise):
     - every schema must have a package attribute (it names its schema header)
@@ -208,17 +224,79 @@ def generate_bundle(schemas: list, destination: str) -> None:
     fragments = merge_fragment_lists([Generator.make_fragments(ir) for ir in irs])
     fragment_files = {f['source_file'] for f in fragments}
 
+    planned = _planned_bundle_paths(irs, fragments)
+    _prune_stale_outputs(destination, planned)
+
     bundle = Generator(destination)
     bundle.generate_document('support.h', 'support.tmpl', schema=irs[0])
     for fragment in fragments:
         bundle.generate_document(f'{fragment["stem"]}.h', 'fragment.tmpl', schema=irs[0], fragment=fragment)
     for ir in irs:
         package_dir = '_'.join(c.replace(' ', '_') for c in ir['package'])
+        schema_types = [t for t in ir['types'] if t.get('source_file') not in fragment_files]
+        referenced_fragments = [
+            f for f in fragments if f['source_file'] in referenced_fragment_files(ir, fragment_files)
+        ]
         bundle.generate_document(
-            f'{package_dir}/schema.h', 'schema.tmpl', schema=ir,
-            schema_types=[t for t in ir['types'] if t.get('source_file') not in fragment_files],
-            fragments=[f for f in fragments if f['source_file'] in referenced_fragment_files(ir, fragment_files)]
+            f'{package_dir}/types.h', 'types.tmpl', schema=ir,
+            schema_types=schema_types, fragments=referenced_fragments
         )
+        for message in ir['messages']:
+            bundle.generate_document(
+                f'{package_dir}/{_message_stem(message)}.h', 'message.tmpl', schema=ir, message=message)
+        bundle.generate_document(f'{package_dir}/schema.h', 'bundle_schema.tmpl', schema=ir)
+
+
+''' Every path (destination-relative, slash-separated) the bundle generation is about to produce '''
+def _planned_bundle_paths(irs: list, fragments: list) -> set:
+    planned = {'support.h'}
+    planned.update(f'{fragment["stem"]}.h' for fragment in fragments)
+    for ir in irs:
+        package_dir = '_'.join(c.replace(' ', '_') for c in ir['package'])
+        planned.update({f'{package_dir}/types.h', f'{package_dir}/schema.h'})
+        for message in ir['messages']:
+            planned.add(f'{package_dir}/{_message_stem(message)}.h')
+    return planned
+
+
+_PROVENANCE_BANNER = '// Generated simple binary encoding message codec'
+
+
+''' Delete files a previous generation produced but the current one does not
+    plan to write. Only files whose first line is the provenance banner are
+    candidates, so anything else living inside the destination is untouched;
+    empty directories left behind by pruned files are removed too. '''
+def _prune_stale_outputs(destination: str, planned_paths: set) -> None:
+    root = pathlib.Path(destination)
+    if not root.is_dir():
+        return
+    for path in root.rglob('*.h'):
+        if not path.is_file():
+            continue
+        if path.relative_to(root).as_posix() in planned_paths:
+            continue
+        with open(path, encoding='utf8') as stream:
+            banner = stream.read(len(_PROVENANCE_BANNER))
+        if banner == _PROVENANCE_BANNER:
+            path.unlink()
+    empty_directories = sorted((p for p in root.rglob('*') if p.is_dir()), reverse=True)
+    for directory in empty_directories:
+        try:
+            directory.rmdir()
+        except OSError:  # not empty anymore (or unremovable): keep it
+            pass
+
+
+_PROVENANCE_BANNER = '// Generated simple binary encoding message codec'
+
+
+''' Message definition dict -> header file stem, 1:1 with the C++ class name
+    (fmt_class_message: first character uppercased, nothing else). Every
+    message name is already required to be a C++ identifier, so no further
+    mangling happens here. '''
+def _message_stem(message: dict) -> str:
+    name = message['name']
+    return name[0].upper() + name[1:]
 
 
 ''' header type definition with provenance-carrying attributes cleared, for

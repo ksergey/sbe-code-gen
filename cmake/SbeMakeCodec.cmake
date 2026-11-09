@@ -156,7 +156,10 @@ function(SbeMakeCodecBundle TARGET)
     add_custom_command(
         OUTPUT ${schemaHeaderOutputs}
         DEPENDS ${PARSED_SCHEMAS} ${PARSED_SCHEMA_DEPS} ${templateDeps} sbe-code-gen-venv
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${PARSED_OUTPUT}"
+        # no rm -rf here: the generator updates the destination in place
+        # (write-if-different + pruning of outputs it no longer plans to
+        # write), so byte-identical headers keep their mtime and only the
+        # translation units actually affected by a schema change recompile
         COMMAND ${SBE_CODE_GEN_PYTHON_EXE} -m app ${schemaArgs} --bundle --destination="${destDir}" --generator="${PARSED_GENERATOR}"
         WORKING_DIRECTORY ${cppCodegenRoot}
         COMMENT "Generating schema bundle (${PARSED_GENERATOR})"

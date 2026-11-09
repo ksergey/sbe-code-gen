@@ -41,6 +41,13 @@ class GeneratorBase(ABC):
         document_dir = os.path.dirname(document_path)
         if document_dir:
             os.makedirs(document_dir, exist_ok=True)
+        # write-if-different: leave a byte-identical file untouched, keeping its
+        # mtime -- timestamp-based builders (ninja/make) and CMake custom-command
+        # dependents then treat it as still up to date and skip rebuilding it
+        if os.path.isfile(document_path):
+            with open(document_path, mode='r', encoding='utf8') as document:
+                if document.read() == document_content:
+                    return
         with open(document_path, mode='w', encoding='utf8') as document:
             document.write(document_content)
 
