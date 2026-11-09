@@ -1,0 +1,26 @@
+{% import 'generate.tmpl' as generate with context %}
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
+//
+// Schema umbrella: the encoding types live in types.h, every message in its
+// own <class>.h (one per message); this header includes them all and
+// provides the schema message list. The public API matches the single-file
+// layout, so consumers keep including this header.
+
+#pragma once
+
+#include "types.h"
+{% for message in schema.messages %}
+#include "{{ message.name[0].upper() + message.name[1:] }}.h"
+{% endfor %}
+
+namespace {{ generate.namespace }} {
+
+// schema messages list
+using Messages = TypeList<
+{% for message in schema.messages %}
+    {{ message.name | fmt_class_message }}{% if not loop.last %},{% endif +%}
+{% endfor %}
+>;
+
+} // namespace {{ generate.namespace }}

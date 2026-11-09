@@ -1,0 +1,18 @@
+{% import 'generate.tmpl' as generate with context %}
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
+//
+// One message per header. Includes the schema's <package>/types.h for the
+// std/support/encoding-type declarations and defines this message only, so a
+// translation unit that decodes a subset of the schema's messages can include
+// just the messages it handles.
+
+#pragma once
+
+#include "types.h"
+
+namespace {{ generate.namespace }} {
+
+{{ generate.decl_message(message) }}
+
+} // namespace {{ generate.namespace }}

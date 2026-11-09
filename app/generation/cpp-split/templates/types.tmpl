@@ -1,0 +1,68 @@
+{% import 'generate.tmpl' as generate with context %}
+// Generated simple binary encoding message codec
+// Message codec generator: https://github.com/ksergey/sbe-code-gen
+//
+// Schema-defined encoding types (enum/set/composite) of one schema plus their
+// re-imports; the messages of the schema live in separate same-directory
+// headers (one per message), which include this file.
+
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cassert>
+#include <cmath>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <iterator>
+#include <limits>
+#include <span>
+#include <stdexcept>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <vector>
+
+#include "support.h"
+{% for fragment in fragments %}
+#include "{{ fragment.stem }}.h"
+{% endfor %}
+
+namespace {{ generate.namespace }} {
+
+// support types referenced unqualified by the generated code below
+using sbe_code_gen::CtStr;
+using sbe_code_gen::TypeList;
+using sbe_code_gen::MP_size_t;
+using sbe_code_gen::MP_size;
+using sbe_code_gen::MP_at;
+using sbe_code_gen::MP_find;
+using sbe_code_gen::MP_MatchRefName;
+using sbe_code_gen::loadUnaligned;
+using sbe_code_gen::storeUnaligned;
+using sbe_code_gen::EndianValueRef;
+using sbe_code_gen::EndianSpan;
+
+// types pulled in from included files
+{% for fragment in fragments %}
+{% for encoded_type in fragment.types %}
+using {{ fragment.namespace }}::{{ encoded_type.name | fmt_class_type }};
+{% endfor %}
+{% endfor %}
+{% for encoded_type in schema_types %}
+    {% if encoded_type.token == 'enum' %}
+
+{{ generate.decl_enum(encoded_type) }}
+    {% elif encoded_type.token == 'set' %}
+
+{{ generate.decl_set(encoded_type) }}
+    {% elif encoded_type.token == 'composite' %}
+
+{{ generate.decl_composite(encoded_type) }}
+    {% endif %}
+{% endfor %}
+
+} // namespace {{ generate.namespace }}
