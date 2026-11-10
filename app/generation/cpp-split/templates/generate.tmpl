@@ -742,7 +742,7 @@ public:
 {% set is_constant = entry.presence == 'constant' %}
 struct {{ class_cpp_t }} {
     using ValueType = {{ value_cpp_t }};
-{% if is_optional %}
+{% if is_optional and type.length == 1 %}
     static constexpr ValueType NullValue = {{ type.null_value | to_cpp_value(type.primitive_type) }};
 {% endif %}
 {% if is_required or is_optional %}

@@ -32,6 +32,7 @@ SCHEMA_XML = '''<?xml version="1.0" encoding="UTF-8"?>
             <type name="mantissa" primitiveType="int64"/>
             <type name="exponent" primitiveType="int8" presence="constant">-8</type>
         </composite>
+        <type name="Memo" primitiveType="char" length="16"/>
     </types>
     <sbe:message name="Order" id="1">
         <field id="1" name="quantity" type="uint64"/>
@@ -41,6 +42,8 @@ SCHEMA_XML = '''<?xml version="1.0" encoding="UTF-8"?>
         <field id="5" name="price" type="Px"/>
         <field id="6" name="action" type="Side" presence="optional"/>
         <field id="7" name="askPrice" type="Px" presence="optional"/>
+        <!-- optional char array: ValueType is std::string_view, it has no single null sentinel -->
+        <field id="8" name="memo" type="Memo" presence="optional"/>
     </sbe:message>
 </sbe:messageSchema>'''
 
@@ -135,6 +138,12 @@ def test_optional_composite_null_value(generated):
 
 def test_required_composite_has_no_null_value(generated):
     body = _ref_body(generated, 'PriceRef')
+    assert 'NullValue' not in body
+
+
+def test_optional_char_array_has_no_null_value(generated):
+    body = _ref_body(generated, 'MemoRef')
+    assert 'using ValueType = std::string_view;' in body
     assert 'NullValue' not in body
 
 
