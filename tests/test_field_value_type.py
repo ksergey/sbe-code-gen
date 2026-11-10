@@ -5,9 +5,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # One schema exercising every field kind: plain scalar (required and
-# optional), enum, set, composite. Every field ref must carry the value type
-# of its field as a `using ValueType` declaration; a composite ref inherits
-# the composite class and reports exactly that class.
+# optional), enum (required and optional), set, composite (required and
+# optional). Every field ref must carry the value type of its field as a
+# `using ValueType` declaration; a composite ref inherits the composite class
+# and reports exactly that class. Nullable fields (presence="optional") also
+# carry `static constexpr NullValue` matching the schema's null value, while
+# non-nullable fields must not have one.
 SCHEMA_XML = '''<?xml version="1.0" encoding="UTF-8"?>
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    description="field value type check" byteOrder="littleEndian"
@@ -36,6 +39,8 @@ SCHEMA_XML = '''<?xml version="1.0" encoding="UTF-8"?>
         <field id="3" name="side" type="Side"/>
         <field id="4" name="flags" type="Flags"/>
         <field id="5" name="price" type="Px"/>
+        <field id="6" name="action" type="Side" presence="optional"/>
+        <field id="7" name="askPrice" type="Px" presence="optional"/>
     </sbe:message>
 </sbe:messageSchema>'''
 
@@ -100,3 +105,44 @@ def test_composite_value_type_names_the_embedded_composite(generated):
 def test_message_header_refs_carry_value_types_without_field_wrappers(generated):
     body = _ref_body(generated, 'BlockLengthRef')
     assert 'using ValueType = std::uint16_t;' in body
+
+
+def test_optional_scalar_null_value(generated):
+    body = _ref_body(generated, 'StampRef')
+    assert 'static constexpr ValueType NullValue = std::numeric_limits<std::uint32_t>::max();' in body
+
+
+def test_required_scalar_has_no_null_value(generated):
+    body = _ref_body(generated, 'QuantityRef')
+    assert 'NullValue' not in body
+
+
+def test_optional_enum_null_value(generated):
+    body = _ref_body(generated, 'ActionRef')
+    assert 'static constexpr ValueType NullValue = Side::SBE_NULL;' in body
+
+
+def test_required_enum_has_no_null_value(generated):
+    body = _ref_body(generated, 'SideRef')
+    assert 'NullValue' not in body
+
+
+def test_optional_composite_null_value(generated):
+    body = _ref_body(generated, 'AskPriceRef')
+    assert body.strip().startswith('struct AskPriceRef : public Px')
+    assert 'static constexpr ValueType NullValue{};' in body
+
+
+def test_required_composite_has_no_null_value(generated):
+    body = _ref_body(generated, 'PriceRef')
+    assert 'NullValue' not in body
+
+
+def test_set_has_no_null_value(generated):
+    body = _ref_body(generated, 'FlagsRef')
+    assert 'NullValue' not in body
+
+
+def test_message_header_refs_have_no_null_value(generated):
+    body = _ref_body(generated, 'BlockLengthRef')
+    assert 'NullValue' not in body
