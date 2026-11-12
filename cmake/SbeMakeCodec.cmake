@@ -107,8 +107,10 @@ endfunction()
 # emitted once and used by every schema of the bundle -- a translation unit
 # that uses two schemas of the bundle sees one shared copy of those types.
 #
-# For every package <p> an INTERFACE library <target>-<p>-sbe is created
-# (with alias <target>::<p>-sbe) exposing its schema header. Every library
+# For every package <p> an INTERFACE library <target>-<p-last>-sbe is created
+# (with alias <target>::<p-last>-sbe; a dotted package "a.b" names the target
+# "b") exposing its schema header. A dotted package also names nested
+# namespaces (a::b) and the nested destination path a/b/. Every library
 # adds ${OUTPUT} and ${OUTPUT}/${INCLUDE_BASE} to its include directories:
 # with INCLUDE_BASE=<base> a schema header is included as "<base>/<p>/schema.h"
 # while the shared support/fragment headers (${OUTPUT}/<base>/support.h, ...)
@@ -145,7 +147,10 @@ function(SbeMakeCodecBundle TARGET)
 
     set(schemaHeaderOutputs)
     foreach(package ${PARSED_PACKAGES})
-        list(APPEND schemaHeaderOutputs "${destDir}/${package}/schema.h")
+        # a dotted package ("a.b.c") names nested namespaces and the nested
+        # destination path a/b/c/
+        string(REPLACE "." "/" packagePath "${package}")
+        list(APPEND schemaHeaderOutputs "${destDir}/${packagePath}/schema.h")
     endforeach()
 
     set(schemaArgs)
@@ -169,7 +174,9 @@ function(SbeMakeCodecBundle TARGET)
     foreach(packageIndex RANGE ${lastPackageIndex})
         list(GET PARSED_PACKAGES ${packageIndex} package)
         list(GET schemaHeaderOutputs ${packageIndex} schemaHeader)
-        set(codecTarget "${TARGET}-${package}-sbe")
+        # the target name uses the package's last component ("a.b.c" -> "c-sbe")
+        string(REGEX REPLACE ".*\\." "" packageShort "${package}")
+        set(codecTarget "${TARGET}-${packageShort}-sbe")
 
         add_library(${codecTarget} INTERFACE EXCLUDE_FROM_ALL)
         target_compile_features(${codecTarget} INTERFACE cxx_std_23)
@@ -179,6 +186,6 @@ function(SbeMakeCodecBundle TARGET)
         # makes "<INCLUDE_BASE>/<package>/schema.h" resolvable for consumers
         target_include_directories(${codecTarget} INTERFACE "${destDir}" "${PARSED_OUTPUT}")
         target_precompile_headers(${codecTarget} INTERFACE ${schemaHeader})
-        add_library(${TARGET}::${package}-sbe ALIAS ${codecTarget})
+        add_library(${TARGET}::${packageShort}-sbe ALIAS ${codecTarget})
     endforeach()
 endfunction()

@@ -114,6 +114,29 @@ def test_bundle_layout_and_umbrella_schema(bundle, tmp_path):
     assert types.startswith(BANNER) and 'class Px' in types and '#include "common_types.h"' in types
 
 
+def test_dotted_package_nests_directories_and_namespace(bundle, tmp_path):
+    bundle({'md': [ORDER_MESSAGE], 'fw.schema.service': [HEARTBEAT_MESSAGE]})
+    dest = tmp_path / 'dest'
+
+    # a dotted package names both the namespace (a::b::c) and the nested path a/b/c/
+    assert sorted(p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file()) == [
+        'common_types.h',
+        'fw/schema/service/Heartbeat.h',
+        'fw/schema/service/schema.h',
+        'fw/schema/service/types.h',
+        'md/Order.h',
+        'md/schema.h',
+        'md/types.h',
+        'support.h',
+    ]
+
+    schema = (dest / 'fw/schema/service/schema.h').read_text()
+    assert 'namespace fw::schema::service {' in schema
+    assert '} // namespace fw::schema::service' in schema
+    heartbeat = (dest / 'fw/schema/service/Heartbeat.h').read_text()
+    assert 'namespace fw::schema::service {' in heartbeat
+
+
 def test_regeneration_preserves_unchanged_files(bundle, tmp_path):
     bundle({'md': [ORDER_MESSAGE], 'svc': [HEARTBEAT_MESSAGE]})
     dest = tmp_path / 'dest'

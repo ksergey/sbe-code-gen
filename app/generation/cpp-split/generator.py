@@ -184,7 +184,7 @@ class Generator(GeneratorBase):
                                       every message header, defines the
                                       Messages TypeList; <package> is the
                                       schema's package attribute with path
-                                      components joined by '_' (a schema
+                                      components joined by '/' (a schema
                                       without a package is an error)
 
     Shared fragment headers are emitted once and included by every schema
@@ -232,7 +232,7 @@ def generate_bundle(schemas: list, destination: str) -> None:
     for fragment in fragments:
         bundle.generate_document(f'{fragment["stem"]}.h', 'fragment.tmpl', schema=irs[0], fragment=fragment)
     for ir in irs:
-        package_dir = '_'.join(c.replace(' ', '_') for c in ir['package'])
+        package_dir = '/'.join(c.replace(' ', '_') for c in ir['package'])
         schema_types = [t for t in ir['types'] if t.get('source_file') not in fragment_files]
         referenced_fragments = [
             f for f in fragments if f['source_file'] in referenced_fragment_files(ir, fragment_files)
@@ -252,7 +252,7 @@ def _planned_bundle_paths(irs: list, fragments: list) -> set:
     planned = {'support.h'}
     planned.update(f'{fragment["stem"]}.h' for fragment in fragments)
     for ir in irs:
-        package_dir = '_'.join(c.replace(' ', '_') for c in ir['package'])
+        package_dir = '/'.join(c.replace(' ', '_') for c in ir['package'])
         planned.update({f'{package_dir}/types.h', f'{package_dir}/schema.h'})
         for message in ir['messages']:
             planned.add(f'{package_dir}/{_message_stem(message)}.h')
