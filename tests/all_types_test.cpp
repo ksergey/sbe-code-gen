@@ -576,3 +576,47 @@ TEST_CASE("all-types: empty and data-only messages") {
                                              dataOnlyHeader.get<"version">().value()};
     REQUIRE_EQ(decoded.get<"payload">().value(), std::string_view{"hello"});
 }
+
+TEST_CASE("all-types: enum name tables") {
+    namespace at = alltypes;
+
+    // uint8-based enum, three valid values in schema order (SBE_NULL excluded)
+    auto const messageNames = at::sbeEnumNames(at::MessageType{});
+    REQUIRE_EQ(messageNames.size(), 3u);
+    REQUIRE_EQ(messageNames[0].first, at::MessageType::NewOrder);
+    REQUIRE_EQ(messageNames[0].second, std::string_view{"NewOrder"});
+    REQUIRE_EQ(messageNames[1].first, at::MessageType::ExecutionReport);
+    REQUIRE_EQ(messageNames[1].second, std::string_view{"ExecutionReport"});
+    REQUIRE_EQ(messageNames[2].first, at::MessageType::Unknown);
+    REQUIRE_EQ(messageNames[2].second, std::string_view{"Unknown"});
+
+    // char-based enum
+    auto const sideNames = at::sbeEnumNames(at::Side{});
+    REQUIRE_EQ(sideNames.size(), 2u);
+    REQUIRE_EQ(sideNames[0].first, at::Side::Buy);
+    REQUIRE_EQ(sideNames[0].second, std::string_view{"Buy"});
+    REQUIRE_EQ(sideNames[1].first, at::Side::Sell);
+    REQUIRE_EQ(sideNames[1].second, std::string_view{"Sell"});
+
+    // uint16-based enum
+    auto const bigNames = at::sbeEnumNames(at::BigType{});
+    REQUIRE_EQ(bigNames.size(), 3u);
+    REQUIRE_EQ(bigNames[1].second, std::string_view{"Beta"});
+    REQUIRE_EQ(bigNames[2].second, std::string_view{"Gamma"});
+}
+
+TEST_CASE("all-types: set bit name tables") {
+    namespace at = alltypes;
+
+    // uint8-based set, choices in schema order
+    REQUIRE_EQ(at::Flags::sbeBitNames.size(), 4u);
+    REQUIRE_EQ(at::Flags::sbeBitNames[0].first, at::Flags::kBit0Bit);
+    REQUIRE_EQ(at::Flags::sbeBitNames[0].second, std::string_view{"Bit0"});
+    REQUIRE_EQ(at::Flags::sbeBitNames[3].first, at::Flags::kBit7Bit);
+    REQUIRE_EQ(at::Flags::sbeBitNames[3].second, std::string_view{"Bit7"});
+
+    // uint64-based set
+    REQUIRE_EQ(at::BigFlags::sbeBitNames.size(), 2u);
+    REQUIRE_EQ(at::BigFlags::sbeBitNames[0].second, std::string_view{"First"});
+    REQUIRE_EQ(at::BigFlags::sbeBitNames[1].second, std::string_view{"Top"});
+}

@@ -391,6 +391,21 @@ enum class {{ class_cpp_t }} : {{ enc_cpp_t }} {
 static_assert(sizeof({{ class_cpp_t }}) == {{ type.encoded_length }});
 {%- endmacro %}
 
+{# value-to-name table of an enum (namespace scope, found by ADL); excludes the SBE_NULL sentinel #}
+{% macro decl_enum_names(type) %}
+{% set class_cpp_t = type.name | fmt_class_type %}
+[[nodiscard]] inline constexpr auto sbeEnumNames({{ class_cpp_t }}) noexcept
+    -> std::span<std::pair<{{ class_cpp_t }}, std::string_view> const> {
+    static constexpr std::array<std::pair<{{ class_cpp_t }}, std::string_view>, {{ type.valid_values | length }}>
+        sbeEnumNamesStore{ {
+{% for valid_value in type.valid_values %}
+            { {{ class_cpp_t }}::{{ valid_value.name | fmt_enum_value }}, "{{ valid_value.name | fmt_enum_value }}" },
+{% endfor %}
+        } };
+    return sbeEnumNamesStore;
+}
+{%- endmacro %}
+
 {# ------------------------------------ #}
 
 {% macro decl_set(type) %}
@@ -405,6 +420,15 @@ public:
     {% set choice_bit = 'k' ~ choice.name[0].upper() ~ choice.name[1:] ~ 'Bit' %}
     static constexpr auto {{ choice_bit }} = ({{ enc_cpp_t }}(1) << {{ choice.value }}u);
 {% endfor %}
+{% if type.choices %}
+    // bit name table (bitmask -> choice name), for runtime serialization
+    static constexpr std::array<std::pair<{{ enc_cpp_t }}, std::string_view>, {{ type.choices | length }}> sbeBitNames{ {
+{% for choice in type.choices %}
+    {% set choice_bit = 'k' ~ choice.name[0].upper() ~ choice.name[1:] ~ 'Bit' %}
+        { {{ choice_bit }}, "{{ choice.name }}" },
+{% endfor %}
+    } };
+{% endif %}
 
     constexpr {{ class_cpp_t }}() = default;
 

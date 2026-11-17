@@ -30,6 +30,7 @@ using sbe_code_gen::EndianSpan;
     {% if encoded_type.token == 'enum' %}
 
 {{ generate.decl_enum(encoded_type) }}
+{{ generate.decl_enum_names(encoded_type) }}
     {% elif encoded_type.token == 'set' %}
 
 {{ generate.decl_set(encoded_type) }}

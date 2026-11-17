@@ -20,6 +20,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {{ generate.namespace }} {
@@ -40,6 +41,7 @@ using Messages = TypeList<
     {% if encoded_type.token == 'enum' %}
 
 {{ generate.decl_enum(encoded_type) }}
+{{ generate.decl_enum_names(encoded_type) }}
     {% elif encoded_type.token == 'set' %}
 
 {{ generate.decl_set(encoded_type) }}
