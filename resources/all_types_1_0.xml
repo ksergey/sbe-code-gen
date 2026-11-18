@@ -222,4 +222,29 @@
         <data id="200" name="payload" type="varString8"/>
     </sbe:message>
 
+    <!-- Market data style message: fixed part, several repeating groups (one of them with a uint16
+         numInGroup dimension) and a trailing variable length data field -->
+    <sbe:message name="Snapshot" id="4" description="Message with several repeating groups and variable length data.">
+        <field id="1" name="instrumentId" type="uint32"/>
+        <field id="2" name="ts" type="int64"/>
+        <field id="3" name="appId" type="uint16" presence="optional"/>
+
+        <group id="100" name="bids">
+            <field id="1" name="price" type="decimal"/>
+            <field id="2" name="qty" type="uint64"/>
+            <field id="3" name="orders" type="uint32" presence="optional"/>
+        </group>
+        <group id="101" name="asks">
+            <field id="1" name="price" type="decimal"/>
+            <field id="2" name="qty" type="uint64"/>
+            <field id="3" name="orders" type="uint32" presence="optional"/>
+        </group>
+        <group id="102" name="stats" dimensionType="groupSize16Encoding">
+            <field id="1" name="type" type="MessageType"/>
+            <field id="2" name="value" type="decimal"/>
+        </group>
+
+        <data id="200" name="symbol" type="varString8"/>
+    </sbe:message>
+
 </sbe:messageSchema>

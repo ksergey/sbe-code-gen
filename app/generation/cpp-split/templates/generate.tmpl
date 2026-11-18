@@ -348,6 +348,13 @@ public:
         return position_ - offset_;
     }
 
+    /// Puts the cursor back into the "just constructed" state, so the variable length part of an already
+    /// encoded message can be read or overwritten again
+    constexpr auto rewind() noexcept -> {{ class_cpp_t }}& {
+        position_ = offset_ + actingBlockLength_;
+        return *this;
+    }
+
     [[nodiscard]] constexpr auto actingBlockLength() const noexcept -> {{ block_length_cpp_t }} {
         return actingBlockLength_;
     }
@@ -701,6 +708,10 @@ public:
         if (*positionPtr_ + {{ length.encoded_length }}u > buffer_.size()) {
           throw std::runtime_error{"not enough space for \"{{ class_cpp_t }}\""};
         }
+    }
+
+    [[nodiscard]] static constexpr auto sbeDataName() noexcept -> char const* {
+        return "{{ data.name }}";
     }
 
     [[nodiscard]] constexpr auto actingVersion() const noexcept -> {{ version_cpp_t }} {
